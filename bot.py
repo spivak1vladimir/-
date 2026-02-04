@@ -283,6 +283,27 @@ async def reminders(context: ContextTypes.DEFAULT_TYPE):
             if timedelta(hours=3, minutes=50) < delta < timedelta(hours=4, minutes=10):
                 await context.bot.send_message(u["id"], REMINDER_4H)
 
+async def admin_msg_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["admin_msg_mode"] = "all"
+    await q.message.reply_text("Напиши сообщение для всех участников:")
+
+
+async def admin_msg_court(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["admin_msg_mode"] = "court"
+    await q.message.reply_text("Напиши сообщение в формате:\ncourt10 ТЕКСТ")
+
+
+async def admin_msg_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    _, _, court, idx = q.data.split("_")
+    context.user_data["admin_msg_mode"] = ("user", court, int(idx))
+    await q.message.reply_text("Напиши сообщение участнику:")
+
 # ================== MAIN ==================
 
 def main():
@@ -291,6 +312,12 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CommandHandler("admin_message", admin_message))
+    app.add_handler(CallbackQueryHandler(admin_msg_all, pattern="^msg_all$"))
+    app.add_handler(CallbackQueryHandler(admin_msg_court, pattern="^msg_court$"))
+    app.add_handler(CallbackQueryHandler(admin_msg_user, pattern="^adm_msg_"))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_sender))
+
 
     app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
     app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
@@ -302,7 +329,36 @@ def main():
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
 
+async def admin_text_sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+
+    mode = context.user_data.get("admin_msg_mode")
+    if not mode:
+        return
+
+    text = update.message.text
+
+    if mode == "all":
+        for c in COURTS.values():
+            for u in c["users"]:
+                await context.bot.send_message(u["id"], text)
+
+    elif mode == "court":
+        court_key, msg = text.split(" ", 1)
+        for u in COURTS[court_key]["users"]:
+            await context.bot.send_message(u["id"], msg)
+
+    elif isinstance(mode, tuple) and mode[0] == "user":
+        _, court, idx = mode
+        u = COURTS[court]["users"][idx]
+        await context.bot.send_message(u["id"], text)
+
+    context.user_data.pop("admin_msg_mode")
+    await update.message.reply_text("Сообщение отправлено.")
+
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
