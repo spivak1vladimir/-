@@ -306,29 +306,6 @@ async def admin_msg_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== MAIN ==================
 
-def main():
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("admin_message", admin_message))
-    app.add_handler(CallbackQueryHandler(admin_msg_all, pattern="^msg_all$"))
-    app.add_handler(CallbackQueryHandler(admin_msg_court, pattern="^msg_court$"))
-    app.add_handler(CallbackQueryHandler(admin_msg_user, pattern="^adm_msg_"))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_sender))
-
-
-    app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
-    app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
-    app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
-    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
-
-    app.add_handler(CallbackQueryHandler(admin_pay, pattern="^adm_pay_"))
-    app.add_handler(CallbackQueryHandler(admin_del, pattern="^adm_del_"))
-
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
-
 async def admin_text_sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
@@ -357,8 +334,30 @@ async def admin_text_sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("admin_msg_mode")
     await update.message.reply_text("Сообщение отправлено.")
 
-    app.run_polling()
+def main():
+    app = Application.builder().token(TOKEN).build()
 
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CommandHandler("admin_message", admin_message))
+
+    app.add_handler(CallbackQueryHandler(admin_msg_all, pattern="^msg_all$"))
+    app.add_handler(CallbackQueryHandler(admin_msg_court, pattern="^msg_court$"))
+    app.add_handler(CallbackQueryHandler(admin_msg_user, pattern="^adm_msg_"))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_sender))
+
+    app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
+    app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
+    app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
+    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
+
+    app.add_handler(CallbackQueryHandler(admin_pay, pattern="^adm_pay_"))
+    app.add_handler(CallbackQueryHandler(admin_del, pattern="^adm_del_"))
+
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
+
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
