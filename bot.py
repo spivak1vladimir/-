@@ -4,7 +4,11 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -27,22 +31,27 @@ COURTS = {
         "title": "Корт 10 человек",
         "max_slots": 10,
         "price": 1400,
-        "start_time": datetime(2026, 2, 5, 21, 30, tzinfo=MOSCOW_TZ),
+        "duration": "2 часа",
+        "start": datetime(2026, 2, 5, 21, 30, tzinfo=MOSCOW_TZ),
         "users": []
     },
     "court4": {
         "title": "Корт 4 человека",
         "max_slots": 4,
         "price": 1600,
-        "start_time": datetime(2026, 2, 5, 21, 30, tzinfo=MOSCOW_TZ),
+        "duration": "1 час",
+        "start": datetime(2026, 2, 5, 21, 30, tzinfo=MOSCOW_TZ),
         "users": []
     }
 }
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
+LOCATION_TEXT = (
+    "Пляжный центр «Лето»\n"
+    "проспект маршала жукова 4 строение 2\n\n"
+    "https://yandex.ru/maps/-/CLh3JG0S"
 )
+
+logging.basicConfig(level=logging.INFO)
 
 # ================== TEXTS ==================
 
@@ -82,111 +91,132 @@ PAYMENT_TEXT = (
 
 # ================== STORAGE ==================
 
-def load_data():
+def load():
     if not os.path.exists(DATA_FILE):
         return {k: [] for k in COURTS}
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
-def save_data():
+def save():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump({k: COURTS[k]["users"] for k in COURTS}, f, ensure_ascii=False, indent=2)
 
-
-data = load_data()
-for key in COURTS:
-    COURTS[key]["users"] = data.get(key, [])
-
-# ================== KEYBOARDS ==================
-
-def courts_kb():
-    kb = []
-    for key, court in COURTS.items():
-        kb.append([InlineKeyboardButton(court["title"], callback_data=f"join_{key}")])
-    kb.append([InlineKeyboardButton("Информация по игре", callback_data="info")])
-    return InlineKeyboardMarkup(kb)
+data = load()
+for k in COURTS:
+    COURTS[k]["users"] = data.get(k, [])
 
 # ================== HELPERS ==================
 
-def format_user(u, position, status):
-    username = f"@{u['username']}" if u.get("username") else "—"
-    return (
-        f"Имя: {u['first_name']}\n"
-        f"Username: {username}\n"
-        f"ID: {u['id']}\n"
-        f"Статус: {status}\n"
-        f"Позиция: {position}\n"
-    )
+def position_and_status(court, user):
+    paid_users = [u for u in court if u["paid"]]
+    if user in paid_users[:len(court)]:
+        return "Основной состав", paid_users.index(user) + 1
+    return "Лист ожидания", court.index(user) + 1
+
+def promote_logic(court):
+    paid = [u for u in court if u["paid"]]
+    unpaid = [u for u in court if not u["paid"]]
+    court[:] = paid + unpaid
+
+# ================== KEYBOARDS ==================
+
+def start_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(c["title"], callback_data=f"join_{k}")]
+        for k, c in COURTS.items()
+    ] + [[InlineKeyboardButton("Информация по игре", callback_data="info")]])
+
+def user_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
+        [InlineKeyboardButton("Информация по игре", callback_data="info")]
+    ])
 
 # ================== USER ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(START_TEXT)
-    await update.message.reply_text(TERMS_TEXT, reply_markup=courts_kb())
+    await update.message.reply_text("Выбери корт:", reply_markup=start_kb())
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    q = update.callback_query
+    await q.answer()
+    court_key = q.data.replace("join_", "")
+    court = COURTS[court_key]["users"]
+    user = q.from_user
 
-    if query.data == "info":
-        await show_info(query)
+    if any(u["id"] == user.id for u in court):
+        await q.message.reply_text("Ты уже зарегистрирован.")
         return
 
-    court_key = query.data.replace("join_", "")
-    user = query.from_user
-    court = COURTS[court_key]
-
-    if any(u["id"] == user.id for u in court["users"]):
-        await query.message.reply_text("Ты уже зарегистрирован.")
-        return
-
-    confirmed_count = len([u for u in court["users"] if u.get("confirmed")])
-    confirmed = confirmed_count < court["max_slots"]
-
-    court["users"].append({
+    entry = {
         "id": user.id,
         "first_name": user.first_name,
         "username": user.username,
         "paid": False,
-        "confirmed": confirmed,
-        "receipt_file_id": None
-    })
-    save_data()
+        "receipt": False
+    }
 
-    position = len(court["users"])
-    status = "Основной состав" if confirmed else "Лист ожидания"
+    court.append(entry)
+    save()
 
-    await query.message.reply_text(
-        format_user(court["users"][-1], position, status) + "\n" + PAYMENT_TEXT
+    status, pos = position_and_status(court, entry)
+
+    await q.message.reply_text(
+        f"Имя: {user.first_name}\n"
+        f"Username: @{user.username}\n"
+        f"ID: {user.id}\n"
+        f"Статус: {status}\n"
+        f"Позиция: {pos}\n\n"
+        "Для подтверждения участия необходимо произвести оплату.\n"
+        "После оплаты отправь сюда чек (фото или файл).",
+        reply_markup=user_kb()
     )
-
-async def show_info(query):
-    text = "Участники по кортам:\n\n"
-    for court in COURTS.values():
-        text += f"{court['title']}:\n"
-        for i, u in enumerate(court["users"], 1):
-            status = "основной" if u.get("confirmed") else "ожидание"
-            username = f"@{u['username']}" if u.get("username") else "—"
-            text += f"{i}. {u['first_name']} ({username}) — {status}\n"
-        text += "\n"
-    await query.message.reply_text(text)
 
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    file_id = update.message.photo[-1].file_id if update.message.photo else update.message.document.file_id
 
-    for court_key, court in COURTS.items():
-        for u in court["users"]:
-            if u["id"] == user.id:
-                u["receipt_file_id"] = file_id
-                save_data()
+    for court_key, c in COURTS.items():
+        for u in c["users"]:
+            if u["id"] == user.id and not u["receipt"]:
+                u["receipt"] = True
+                save()
 
                 await context.bot.send_message(
                     ADMIN_CHAT_ID,
-                    f"Чек от {u['first_name']} ({court['title']})"
+                    f"Чек от {u['first_name']} ({c['title']})"
                 )
-                await context.bot.send_photo(ADMIN_CHAT_ID, file_id)
+                await context.bot.forward_message(
+                    ADMIN_CHAT_ID,
+                    update.message.chat_id,
+                    update.message.message_id
+                )
+                return
+
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    text = f"Игра в волейбол Spivak Run\n\n{LOCATION_TEXT}\n\n"
+    for k, c in COURTS.items():
+        text += f"{c['title']}:\n"
+        for i, u in enumerate(c["users"], 1):
+            paid = "оплачено" if u["paid"] else "не оплачено"
+            text += f"{i}. {u['first_name']} (@{u['username']}) — {paid}\n"
+        text += "\n"
+
+    await q.message.reply_text(text)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+
+    for c in COURTS.values():
+        for u in c["users"]:
+            if u["id"] == uid:
+                c["users"].remove(u)
+                save()
+                await q.message.reply_text("Участие отменено.")
                 return
 
 # ================== ADMIN ==================
@@ -195,71 +225,23 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
 
-    keyboard = []
-    text = "Участники:\n\n"
-
-    for court_key, court in COURTS.items():
-        text += f"{court['title']}:\n"
-        for i, u in enumerate(court["users"]):
-            paid = "оплачено" if u.get("paid") else "не оплачено"
-            username = f"@{u['username']}" if u.get("username") else "—"
-            text += f"{i+1}. {u['first_name']} ({username}) — {paid}\n"
-
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"Подтвердить оплату {u['first_name']}",
-                    callback_data=f"adm_pay_{court_key}_{i}"
-                ),
-                InlineKeyboardButton(
-                    f"Удалить {u['first_name']}",
-                    callback_data=f"adm_del_{court_key}_{i}"
-                )
-            ])
+    text = "АДМИНКА\n\n"
+    for k, c in COURTS.items():
+        text += f"{c['title']}:\n"
+        for i, u in enumerate(c["users"]):
+            text += f"{i+1}. {u['first_name']} (@{u['username']})\n"
         text += "\n"
 
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def admin_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    _, _, court_key, idx = query.data.split("_")
-    idx = int(idx)
-    court = COURTS[court_key]
-    user = court["users"][idx]
-
-    user["paid"] = True
-    user["confirmed"] = True
-
-    confirmed = [u for u in court["users"] if u.get("confirmed")]
-    if len(confirmed) > court["max_slots"]:
-        user["confirmed"] = False
-
-    save_data()
-
-    await context.bot.send_message(user["id"], "Оплата подтверждена. Ты в основном составе.")
-    await query.edit_message_text("Оплата подтверждена")
-
-async def admin_del(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    _, _, court_key, idx = query.data.split("_")
-    idx = int(idx)
-    user = COURTS[court_key]["users"].pop(idx)
-    save_data()
-
-    await context.bot.send_message(user["id"], "Ты удалён из списка")
-    await query.edit_message_text("Игрок удалён")
+    await update.message.reply_text(text)
 
 # ================== REMINDERS ==================
 
 async def reminders(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(MOSCOW_TZ)
-    for court in COURTS.values():
-        delta = court["start_time"] - now
-        for u in court["users"]:
-            if not u.get("confirmed"):
+    for c in COURTS.values():
+        delta = c["start"] - now
+        for u in c["users"]:
+            if not u["paid"]:
                 continue
             if timedelta(hours=23, minutes=50) < delta < timedelta(hours=24, minutes=10):
                 await context.bot.send_message(u["id"], REMINDER_24H)
@@ -274,15 +256,14 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
 
-    app.add_handler(CallbackQueryHandler(join, pattern="^(join_|info)"))
-    app.add_handler(CallbackQueryHandler(admin_pay, pattern="^adm_pay_"))
-    app.add_handler(CallbackQueryHandler(admin_del, pattern="^adm_del_"))
+    app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
+    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
+    app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
 
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
 
-    app.job_queue.run_repeating(reminders, interval=300)
+    app.job_queue.run_repeating(reminders, 300)
 
-    logging.info("BOT STARTED")
     app.run_polling()
 
 if __name__ == "__main__":
