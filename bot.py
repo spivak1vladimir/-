@@ -16,7 +16,7 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 
-TOKEN = "7705759805:AAE3ds94Z1LoMhgLA5PZAYweFQnCNkzgl6g"
+TOKEN = ""
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
