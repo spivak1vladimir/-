@@ -15,7 +15,7 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 
-TOKEN = "8540000411:AAHlqjProM_Z5SLow4Xh749Ibho6mPxbRK8"
+TOKEN = "8540000411:AAERpbuhWVKX4OhuduG9T-1kNc1I-3PbL2A"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 30
 DATA_FILE = "registered_users.json"
@@ -76,7 +76,7 @@ BASE_INFO_TEXT = (
 
 PAYMENT_TEXT = (
     "Стоимость участия — 1300 ₽\n\n"
-    "Оплата по номеру 8 925 826-57-45\n"
+    "Оплата по номеру 8 906 269 8307\n"
     "Сбербанк / Т-Банк\n\n"
     "Ссылка для оплаты:\n"
     "https://messenger.online.sberbank.ru/sl/rI5Wt9jmVbG90spq6\n\n"
@@ -458,4 +458,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
