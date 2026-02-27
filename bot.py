@@ -15,7 +15,7 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 
-TOKEN = "8540000411:AAERpbuhWVKX4OhuduG9T-1kNc1I-3PbL2A"
+TOKEN = "8540000411:AAGGVhIDCHVds5y7mPWR0Aui6VSZqH_tDJo"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 30
 DATA_FILE = "registered_users.json"
@@ -460,3 +460,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
