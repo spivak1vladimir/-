@@ -1,463 +1,367 @@
 import os
 import json
-import logging
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
     ContextTypes,
+    filters,
 )
 
 # ================== CONFIG ==================
 
-TOKEN = "8540000411:AAGGVhIDCHVds5y7mPWR0Aui6VSZqH_tDJo"
+TOKEN = "8570155371:AAGy3dsnO0-SpZMWlGHEWvipsJ3GtmDYQxE"
 ADMIN_CHAT_ID = 194614510
-MAX_SLOTS = 30
 DATA_FILE = "registered_users.json"
-
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
-GAME_DATETIME = datetime(
-    2026, 3, 9, 19, 0,
-    tzinfo=MOSCOW_TZ
-)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
+HALL = {
+    "prana": {
+        "title": "Йога · зал «Прана»",
+        "max_slots": 12,
+        "price": 800,
+        "start": datetime(2026, 2, 7, 19, 00, tzinfo=MOSCOW_TZ),
+        "users": []
+    }
+}
 
 # ================== TEXTS ==================
 
-TERMS_TEXT = (
-  "Пожалуйста, ознакомься с правилами участия в киновечере в лофте:\n"
-"— Если гость из листа ожидания произведёт оплату раньше, чем гость из основного списка, он будет переведён в основной список участников.\n"
-"— Просьба производить оплату заранее, так как требуется предварительная оплата аренды лофта и организация фуршета.\n"
-"— Формат встречи включает совместный просмотр фильма, фуршет и последующее обсуждение картины в открытом формате.\n"
-"— Участник самостоятельно несёт ответственность за свою жизнь и здоровье.\n"
-"— Участник несёт ответственность за сохранность личных вещей.\n"
-"— Согласие на обработку персональных данных.\n"
-"— Согласие на фото- и видеосъёмку во время мероприятия.\n\n"
-"Условия оплаты и отмены участия:\n"
-"— При отмене участия менее чем за 24 часа до начала киновечера оплата не возвращается.\n"
-"— При отмене не позднее чем за 24 часа до начала мероприятия средства возвращаются.\n"
-"— Допускается передача оплаченного места другому гостю при самостоятельном поиске замены.\n\n"
-)
-
 START_TEXT = (
-    "Собираемся в лофте на кинопоказ:\n"
-    "Цитрус Холл\n"
-    "Садовническая ул., 78, стр. 5, Москва\n"
-    "метро Павелецкая\n"
-    "09 марта 2026\n"
-    "Сбор: 18:40\n"
-    "Начало просмотра: 19:00\n\n"
-    "Ты присоединился на кинопаказ\n\n"
-    + TERMS_TEXT +
-    "Если согласен с условиями — нажми кнопку ниже."
+    "Йога · Spivak Run\n\n"
+    "Зал «Прана»\n"
+    "Йога-центр diwali столярный пер.,2, Москва\n\n"
+    "https://yandex.ru/maps/-/CPEZV2ph\n\n"
+    "Дата: 7 февраля\n"
+    "Сбор: 18:45\n"
+    "Начало занятия: 19:00\n\n"
+    "Нажми кнопку ниже для записи:"
 )
 
-BASE_INFO_TEXT = (
-    "Киновечер от Ани Архипенко\n\n"
-    "09 марта 2026\n"
-    "Сбор: 18:40\n"
-    "Начало просмотра: 19:00\n\n"
-    "Адрес:\n"
-    "Цитрус Холл\n"
-    "метро Павелецкая\n"
-    "Садовническая ул., 78, стр. 5, Москва\n"
-    "https://yandex.ru/maps/-/CPeTRCMn\n\n"
-)
-
-PAYMENT_TEXT = (
-    "Стоимость участия — 1300 ₽\n\n"
-    "Оплата по номеру 8 906 269 8307\n"
-    "Сбербанк / Т-Банк\n\n"
-    "Ссылка для оплаты:\n"
-    "https://messenger.online.sberbank.ru/sl/rI5Wt9jmVbG90spq6\n\n"
-    "После оплаты нажми кнопку ниже."
-)
-
-REMINDER_24H = "Напоминание\nКинопоказ состоится завтра в 22:00."
-REMINDER_4H = "Напоминание\nКинопоказ начнётся через 4 часа."
+REMINDER_24H = "Напоминание\nЗанятие йогой состоится завтра в 19:00."
+REMINDER_4H = "Напоминание\nЗанятие йогой начнётся через 4 часа."
 
 # ================== STORAGE ==================
 
-registered_users: list[dict] = []
-
-
-def load_users_sync():
+def load():
     if not os.path.exists(DATA_FILE):
         return []
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
-def save_users_sync(users):
+def save():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+        json.dump(HALL["prana"]["users"], f, ensure_ascii=False, indent=2)
 
-
-async def load_users():
-    global registered_users
-    registered_users = await asyncio.to_thread(load_users_sync)
-
-
-async def save_users():
-    await asyncio.to_thread(save_users_sync, registered_users)
+HALL["prana"]["users"] = load()
 
 # ================== HELPERS ==================
 
-def build_admin_new_user_text(user, position):
-    status = "основной состав" if position <= MAX_SLOTS else "лист ожидания"
-    username = f"@{user.username}" if user.username else "—"
+def paid_sorted():
+    users = HALL["prana"]["users"]
+    paid = [u for u in users if u["paid"]]
+    unpaid = [u for u in users if not u["paid"]]
+    return paid, unpaid
 
-    return (
-        "Новый игрок!\n\n"
-        f"Имя: {user.first_name}\n"
-        f"Username: {username}\n"
-        f"ID: {user.id}\n"
-        f"Статус: {status}\n"
-        f"Позиция: {position}"
-    )
+def status_and_position(user):
+    paid, unpaid = paid_sorted()
+    if user["paid"] and user in paid[:HALL["prana"]["max_slots"]]:
+        return "Основной состав", paid.index(user) + 1
+    if user["paid"]:
+        return "Лист ожидания", paid.index(user) + 1
+    return "Лист ожидания", unpaid.index(user) + 1
 
+# --- NEW: safe lookup by user_id (not by index) ---
+def find_user(user_id: int):
+    for u in HALL["prana"]["users"]:
+        if u["id"] == user_id:
+            return u
+    return None
 
-def build_user_status_text(user, position):
-    status = "основной состав" if position <= MAX_SLOTS else "лист ожидания"
-    username = f"@{user.username}" if user.username else "—"
+# ================== KEYBOARDS ==================
 
-    return (
-        "Регистрация принята \n\n"
-        f"Имя: {user.first_name}\n"
-        f"Username: {username}\n"
-        f"ID: {user.id}\n"
-        f"Статус: {status}\n"
-        f"Позиция: {position}\n\n"
-        "Используй кнопки ниже для управления участием 👇"
-    )
-
-def try_promote_paid_user():
-    if len(registered_users) <= MAX_SLOTS:
-        return
-
-    # ищем неоплаченного в основном составе
-    for i in range(MAX_SLOTS):
-        if not registered_users[i].get("paid"):
-            # ищем оплаченного в листе ожидания
-            for j in range(MAX_SLOTS, len(registered_users)):
-                if registered_users[j].get("paid"):
-                    # меняем местами
-                    registered_users[i], registered_users[j] = (
-                        registered_users[j],
-                        registered_users[i],
-                    )
-                    return
-
-
-def build_participants_text():
-    if not registered_users:
-        return "Участников пока нет."
-
-    text = "Участники:\n\n"
-
-    # Основной состав
-    text += " Основной состав:\n"
-    for i, u in enumerate(registered_users[:MAX_SLOTS], 1):
-        paid = " оплачено" if u.get("paid") else " не оплачено"
-        arrived = " пришёл" if u.get("arrived") else "—"
-        username = f"@{u['username']}" if u.get("username") else "—"
-        text += f"{i}. {u['first_name']} ({username}) — {paid} — {arrived}\n"
-
-    # Лист ожидания
-    if len(registered_users) > MAX_SLOTS:
-        text += "\n──────────────\n⏳ Лист ожидания:\n"
-        for i, u in enumerate(registered_users[MAX_SLOTS:], MAX_SLOTS + 1):
-            paid = " оплачено" if u.get("paid") else " не оплачено"
-            username = f"@{u['username']}" if u.get("username") else "—"
-            text += f"{i}. {u['first_name']} ({username}) — {paid}\n"
-
-    return text
-
-
-def build_info_text():
-    return (
-        BASE_INFO_TEXT
-        + f"Количество участников: {len(registered_users)}\n\n"
-        + build_participants_text()
-    )
-
-
-def participant_keyboard():
+def start_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Информация по кинопоказу", callback_data="info")],
-        [InlineKeyboardButton("Оплатить", callback_data="paid")],
-        [InlineKeyboardButton("Пришёл", callback_data="arrived_self")],
-        [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
+        [InlineKeyboardButton("Записаться на занятие", callback_data="join")]
     ])
 
-# ================== USER HANDLERS ==================
+def user_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Оплатить", callback_data="pay")],
+        [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
+        [InlineKeyboardButton("Информация о занятии", callback_data="info")],
+        [InlineKeyboardButton("Обсудим йогу в чате", url="https://t.me/chat_spivak_run")]
+    ])
+
+# --- CHANGED: admin buttons now encode user_id ---
+def admin_user_kb(user_id: int):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Подтвердить оплату", callback_data=f"adm_pay:{user_id}")],
+        [InlineKeyboardButton("Написать участнику", callback_data=f"adm_msg:{user_id}")],
+        [InlineKeyboardButton("Удалить", callback_data=f"adm_del:{user_id}")]
+    ])
+
+def admin_message_kb():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Написать всем", callback_data="msg_all")]
+    ])
+
+# ================== USER ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("Принимаю", callback_data="register")],
-        [InlineKeyboardButton("Информация по кинопоказу", callback_data="info")],
-    ]
-    await update.message.reply_text(START_TEXT, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(START_TEXT, reply_markup=start_kb())
 
+async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
-async def info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text(build_info_text())
+    user = q.from_user
+    users = HALL["prana"]["users"]
 
-
-async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
-
-    if any(u["id"] == user.id for u in registered_users):
-        await query.edit_message_text("Ты уже зарегистрирован.")
+    if any(u["id"] == user.id for u in users):
+        await q.message.reply_text("Ты уже записан.")
         return
 
-    user_data = {
+    users.append({
         "id": user.id,
         "first_name": user.first_name,
         "username": user.username,
-        "paid": False,
-        "arrived": False,
-    }
+        "paid": False
+    })
+    save()
 
-    registered_users.append(user_data)
-    await save_users()
-
-    position = len(registered_users)
-
-    await context.bot.send_message(
-        chat_id=ADMIN_CHAT_ID,
-        text=build_admin_new_user_text(user, position),
+    await q.message.reply_text(
+        "Для подтверждения участия необходимо произвести оплату.",
+        reply_markup=user_kb()
     )
 
-    await context.bot.send_message(
-        chat_id=user.id,
-        text=build_user_status_text(user, position),
-        reply_markup=participant_keyboard(),
-    )
+async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
 
-    if position <= MAX_SLOTS:
-        await context.bot.send_message(
-            chat_id=user.id,
-            text=PAYMENT_TEXT,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Я оплатил", callback_data="paid")]
-            ]),
-        )
+    for u in HALL["prana"]["users"]:
+        if u["id"] == uid:
+            status, pos = status_and_position(u)
+            await q.message.reply_text(
+                f"Имя: {u['first_name']}\n"
+                f"Username: @{u['username']}\n"
+                f"ID: {u['id']}\n"
+                f"Зал: Прана\n"
+                f"Стоимость: {HALL['prana']['price']} ₽\n"
+                f"Статус: {status}\n"
+                f"Позиция: {pos}\n\n"
+                "Оплата по номеру 8 925 826-57-45\n"
+                "Сбербанк / Т-Банк\n\n"
+                "https://messenger.online.sberbank.ru/sl/jh1vjJD528UJTVphz\n\n"
+                "После оплаты отправь сюда чек (фото или файл)."
+            )
+            return
 
-    await query.edit_message_text("Регистрация принята.")
+# --- CHANGED: send admin kb with user_id (not idx) ---
+async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
 
-
-async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
-    
-    user_data = next((u for u in registered_users if u["id"] == user.id), None)
-    if user_data:
-        user_data["paid"] = True
-        try_promote_paid_user()
-        await save_users()
-
-    await context.bot.send_message(
-        chat_id=ADMIN_CHAT_ID,
-        text=f"Игрок {user.first_name} нажал кнопку «Я оплатил».",
-    )
-
-    await query.edit_message_text("Ожидается подтверждение оплаты администратором.")
-
+    for u in HALL["prana"]["users"]:
+        if u["id"] == user.id:
+            await context.bot.forward_message(
+                ADMIN_CHAT_ID,
+                update.message.chat_id,
+                update.message.message_id
+            )
+            await context.bot.send_message(
+                ADMIN_CHAT_ID,
+                f"Чек от {u['first_name']} (зал «Прана»)",
+                reply_markup=admin_user_kb(u["id"])
+            )
+            return
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
+    q = update.callback_query
+    await q.answer()
 
-    user_data = next((u for u in registered_users if u["id"] == user.id), None)
-    if not user_data:
-        await query.edit_message_text("Ты не зарегистрирован.")
-        return
+    uid = q.from_user.id
+    users = HALL["prana"]["users"]
 
-    registered_users.remove(user_data)
-    await save_users()
-    await promote_from_waiting_list(context)
+    for u in users:
+        if u["id"] == uid:
+            users.remove(u)
+            save()
+            await q.message.reply_text("Участие отменено.")
+            return
 
-    await query.edit_message_text("Ты отменил участие.")
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
+    text = START_TEXT + "\n\nУчастники:\n"
+    paid, unpaid = paid_sorted()
 
-async def arrived_self(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
+    for u in paid[:HALL["prana"]["max_slots"]]:
+        username = f"@{u['username']}" if u.get("username") else "без username"
+        text += f"• {u['first_name']} ({username}) — основной\n"
 
-    user_data = next((u for u in registered_users if u["id"] == user.id), None)
-    if not user_data:
-        await query.edit_message_text("Ты не зарегистрирован.")
-        return
+    for u in paid[HALL["prana"]["max_slots"]:] + unpaid:
+        username = f"@{u['username']}" if u.get("username") else "без username"
+        text += f"• {u['first_name']} — ожидание\n"
 
-    user_data["arrived"] = True
-    await save_users()
-
-    await query.edit_message_text("Отлично  Ты отмечен как пришедший на кинопоказ.")
+    await q.message.reply_text(text)
 
 # ================== ADMIN ==================
 
-async def promote_from_waiting_list(context: ContextTypes.DEFAULT_TYPE):
-    if len(registered_users) < MAX_SLOTS:
-        return
-
-    user = registered_users[MAX_SLOTS - 1]
-    if user.get("paid"):
-        return
-
-    await context.bot.send_message(
-        chat_id=user["id"],
-        text="Для тебя освободилось место в основном составе.\n\n" + PAYMENT_TEXT,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Я оплатил", callback_data="paid")]
-        ]),
-    )
-
-
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("Доступ запрещён.")
         return
 
-    keyboard = []
-    for i, u in enumerate(registered_users):
-        row = [
-            InlineKeyboardButton(f"Удалить {u['first_name']}", callback_data=f"del_{i}")
-        ]
-        if not u["paid"]:
-            row.append(
-                InlineKeyboardButton(f"Подтвердить оплату {u['first_name']}", callback_data=f"pay_{i}")
-            )
-        if not u["arrived"]:
-            row.append(
-                InlineKeyboardButton(f"Пришёл {u['first_name']}", callback_data=f"arr_{i}")
-            )
-        keyboard.append(row)
+    text = "АДМИНКА · ЙОГА\n\n"
+    for i, u in enumerate(HALL["prana"]["users"]):
+        status, _ = status_and_position(u)
+        paid = "оплачено" if u["paid"] else "не оплачено"
+        text += f"{i+1}. {u['first_name']} — {paid} — {status}\n"
 
-    await update.message.reply_text(
-        build_participants_text(),
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-async def admin_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    idx = int(query.data.split("_")[1])
-
-    registered_users.pop(idx)
-    await save_users()
-    await promote_from_waiting_list(context)
-
-    await query.edit_message_text("Участник удалён.")
-
-
-async def admin_confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    idx = int(query.data.split("_")[1])
-
-    registered_users[idx]["paid"] = True
-    try_promote_paid_user()
-    await save_users()
-
-    await context.bot.send_message(
-        chat_id=registered_users[idx]["id"],
-        text="Оплата подтверждена администратором.",
-    )
-
-    await query.edit_message_text("Оплата подтверждена.")
-
-
-async def admin_arrived(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    idx = int(query.data.split("_")[1])
-
-    registered_users[idx]["arrived"] = True
-    await save_users()
-
-    await query.edit_message_text("Отмечен как пришёл.")
+    await update.message.reply_text(text)
 
 async def admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
+    await update.message.reply_text("Рассылка:", reply_markup=admin_message_kb())
 
-    text = " ".join(context.args)
-    if not text:
-        await update.message.reply_text("Напиши текст сообщения:\n/admin_message Текст")
+# --- NEW: list participants with delete buttons ---
+async def admin_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID:
         return
 
-    for u in registered_users:
-        try:
+    if not HALL["prana"]["users"]:
+        await update.message.reply_text("Список пуст.")
+        return
+
+    await update.message.reply_text("УЧАСТНИКИ (нажми «Удалить»):")
+    for u in HALL["prana"]["users"]:
+        paid = "оплачено" if u["paid"] else "не оплачено"
+        username = f"@{u['username']}" if u.get("username") else "без username"
+        status, pos = status_and_position(u)
+
+        await update.message.reply_text(
+            f"{u['first_name']} ({username})\n"
+            f"ID: {u['id']}\n"
+            f"{paid} · {status} · позиция {pos}",
+            reply_markup=admin_user_kb(u["id"])
+        )
+
+# --- CHANGED: pay/del now parse user_id and lookup safely ---
+async def admin_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    _, user_id_str = q.data.split(":")
+    user_id = int(user_id_str)
+
+    u = find_user(user_id)
+    if not u:
+        await q.edit_message_text("Пользователь не найден (возможно, уже удалён).")
+        return
+
+    u["paid"] = True
+    save()
+
+    await context.bot.send_message(user_id, "Оплата подтверждена. Ты записан на занятие.")
+    await q.edit_message_text("Оплата подтверждена.")
+
+async def admin_del(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    _, user_id_str = q.data.split(":")
+    user_id = int(user_id_str)
+
+    u = find_user(user_id)
+    if not u:
+        await q.edit_message_text("Пользователь не найден (возможно, уже удалён).")
+        return
+
+    HALL["prana"]["users"].remove(u)
+    save()
+
+    await context.bot.send_message(user_id, "Ты удалён из списка.")
+    await q.edit_message_text("Участник удалён.")
+
+# ================== ADMIN MESSAGES ==================
+
+async def admin_msg_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    context.user_data["admin_msg_mode"] = "all"
+    await q.message.reply_text("Напиши сообщение для всех участников:")
+
+# --- CHANGED: store user_id instead of idx ---
+async def admin_msg_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    _, user_id_str = q.data.split(":")
+    user_id = int(user_id_str)
+
+    context.user_data["admin_msg_mode"] = ("user", user_id)
+    await q.message.reply_text("Напиши сообщение участнику:")
+
+# ================== MAIN ==================
+
+# --- CHANGED: send by user_id (not idx) ---
+async def admin_text_sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+
+    mode = context.user_data.get("admin_msg_mode")
+    if not mode:
+        return
+
+    text = update.message.text
+
+    if mode == "all":
+        for u in HALL["prana"]["users"]:
             await context.bot.send_message(u["id"], text)
-        except Exception:
-            pass
 
-    await update.message.reply_text("Сообщение отправлено всем участникам ")
+    elif isinstance(mode, tuple) and mode[0] == "user":
+        _, user_id = mode
+        await context.bot.send_message(user_id, text)
 
-
-# ================== REMINDERS ==================
-
-async def reminder_24h(context: ContextTypes.DEFAULT_TYPE):
-    for u in registered_users:
-        await context.bot.send_message(u["id"], REMINDER_24H)
-
-
-async def reminder_4h(context: ContextTypes.DEFAULT_TYPE):
-    for u in registered_users:
-        await context.bot.send_message(u["id"], REMINDER_4H)
+    context.user_data.pop("admin_msg_mode", None)
+    await update.message.reply_text("Сообщение отправлено.")
 
 # ================== MAIN ==================
 
 def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    loop.run_until_complete(load_users())
-
     app = Application.builder().token(TOKEN).build()
-
-    app.job_queue.run_once(reminder_24h, when=GAME_DATETIME - timedelta(hours=24))
-    app.job_queue.run_once(reminder_4h, when=GAME_DATETIME - timedelta(hours=4))
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CommandHandler("admin_message", admin_message))
 
+    # --- NEW ---
+    app.add_handler(CommandHandler("players", admin_players))
 
-    app.add_handler(CallbackQueryHandler(register, pattern="^register$"))
-    app.add_handler(CallbackQueryHandler(paid, pattern="^paid$"))
-    app.add_handler(CallbackQueryHandler(arrived_self, pattern="^arrived_self$"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_sender))
+
+    app.add_handler(CallbackQueryHandler(join, pattern="^join$"))
+    app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
-    app.add_handler(CallbackQueryHandler(info_cb, pattern="^info$"))
+    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
-    app.add_handler(CallbackQueryHandler(admin_delete, pattern="^del_"))
-    app.add_handler(CallbackQueryHandler(admin_confirm_payment, pattern="^pay_"))
-    app.add_handler(CallbackQueryHandler(admin_arrived, pattern="^arr_"))
+    app.add_handler(CallbackQueryHandler(admin_msg_all, pattern="^msg_all$"))
 
-    logging.info("Bot started")
+    # --- CHANGED patterns: now "adm_xxx:<user_id>" ---
+    app.add_handler(CallbackQueryHandler(admin_msg_user, pattern=r"^adm_msg:\d+$"))
+    app.add_handler(CallbackQueryHandler(admin_pay, pattern=r"^adm_pay:\d+$"))
+    app.add_handler(CallbackQueryHandler(admin_del, pattern=r"^adm_del:\d+$"))
+
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
+
     app.run_polling()
 
-
 if __name__ == "__main__":
-
     main()
-
