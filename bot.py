@@ -5,12 +5,8 @@ from zoneinfo import ZoneInfo
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters
 )
 from telegram.error import Forbidden
 
@@ -76,9 +72,7 @@ def status_and_position(court_key, user):
 def courts_kb():
     primary = COURTS[PRIMARY_COURT_KEY]
     keys = [PRIMARY_COURT_KEY] if len(primary["users"]) < primary["max_slots"] else list(COURTS.keys())
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(COURTS[k]["title"], callback_data=f"join_{k}")] for k in keys]
-    )
+    return InlineKeyboardMarkup([[InlineKeyboardButton(COURTS[k]["title"], callback_data=f"join_{k}")] for k in keys])
 
 def user_kb():
     return InlineKeyboardMarkup([
@@ -94,9 +88,7 @@ def admin_main_kb():
     ])
 
 def admin_court_kb():
-    rows = []
-    for k in COURTS:
-        rows.append([InlineKeyboardButton(COURTS[k]["title"], callback_data=f"manage_{k}")])
+    rows = [[InlineKeyboardButton(COURTS[k]["title"], callback_data=f"manage_{k}")] for k in COURTS]
     return InlineKeyboardMarkup(rows)
 
 def admin_court_manage_kb(court_key):
@@ -160,9 +152,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 status, pos = status_and_position(k, u)
                 await q.message.reply_text(
                     f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\n"
-                    "Оплата: Сбербанк / Т-Банк\nНомер: 8 925 826-57-45\n"
-                    "Ссылка: https://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n"
-                    "После оплаты отправь чек (фото или файл)."
+                    "Оплата: Сбербанк / Т-Банк\nНомер: 8 925 826-57-45\nСсылка: https://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\nПосле оплаты отправь чек (фото или файл)."
                 )
                 return
 
@@ -173,14 +163,12 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for k, c in COURTS.items():
         text += f"{c['title']}:\n"
         paid, unpaid = paid_sorted(k)
-        if paid:
-            for i, u in enumerate(paid[:c["max_slots"]], 1):
-                username = f"@{u['username']}" if u.get("username") else "—"
-                text += f"{i}. {u['first_name']} ({username}) — оплачено\n"
-        if unpaid:
-            for i, u in enumerate(unpaid, 1):
-                username = f"@{u['username']}" if u.get("username") else "—"
-                text += f"— {u['first_name']} ({username}) — не оплачено\n"
+        for i, u in enumerate(paid[:c["max_slots"]], 1):
+            username = f"@{u['username']}" if u.get("username") else "—"
+            text += f"{i}. {u['first_name']} ({username}) — оплачено\n"
+        for i, u in enumerate(unpaid, 1):
+            username = f"@{u['username']}" if u.get("username") else "—"
+            text += f"— {u['first_name']} ({username}) — не оплачено\n"
         if len(c["users"]) < c["max_slots"]:
             text += f"Набралось {len(c['users'])} игроков. Игра сокращённая, 1 час.\n"
         text += "\n"
@@ -189,8 +177,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= RECEIVE CHECKS =================
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    if user.id == ADMIN_CHAT_ID:
-        return
+    if user.id == ADMIN_CHAT_ID: return
     found = False
     for k, c in COURTS.items():
         for u in c["users"]:
@@ -198,14 +185,9 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 found = True
                 if update.message.photo or update.message.document:
                     try:
-                        await context.bot.forward_message(
-                            chat_id=ADMIN_CHAT_ID,
-                            from_chat_id=update.message.chat_id,
-                            message_id=update.message.message_id
-                        )
+                        await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
                         await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
-                    except:
-                        await update.message.reply_text("Ошибка при отправке чека админу.")
+                    except: await update.message.reply_text("Ошибка при отправке чека админу.")
                 else:
                     await update.message.reply_text("Отправь фото или документ чека.")
                 return
@@ -213,10 +195,58 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
 
 # ================= ADMIN HANDLERS =================
-# Здесь вставьте полный admin, admin_callback, upload_afisha_handler как в первой версии
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID: return
+    await update.message.reply_text("Выбери действие:", reply_markup=admin_main_kb())
+
+async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
+    if data == "update_afisha":
+        context.user_data["upload_afisha_active"] = True
+        await q.message.reply_text("Отправь фото афиши для обновления:")
+    elif data == "manage_courts":
+        await q.message.reply_text("Выбери корт для управления:", reply_markup=admin_court_kb())
+    elif data.startswith("manage_"):
+        court_key = data.replace("manage_", "")
+        kb = admin_court_manage_kb(court_key)
+        if kb:
+            await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
+        else:
+            await q.message.reply_text("На этом корте пока нет участников.")
+    elif data.startswith("adm_user_"):
+        parts = data.split("_"); _, _, court, idx, action = parts; idx=int(idx)
+        if court not in COURTS or idx>=len(COURTS[court]["users"]):
+            await q.edit_message_text("Игрок не найден"); return
+        user = COURTS[court]["users"][idx]
+        if action=="del":
+            COURTS[court]["users"].pop(idx); save()
+            try: await context.bot.send_message(user["id"], "Ты удалён администратором.")
+            except: pass
+            await q.edit_message_text(f"{user['first_name']} удалён.")
+        elif action=="pay":
+            user["paid"]=True; save()
+            try: await context.bot.send_message(user["id"], "Оплата подтверждена администратором.")
+            except: pass
+            await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
+
+async def upload_afisha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID: return
+    if context.user_data.get("upload_afisha_active"):
+        if update.message.photo:
+            try:
+                file = await update.message.photo[-1].get_file()
+                await file.download_to_drive(AFISHA_FILE)
+                await update.message.reply_text("Афиша обновлена")
+            except:
+                await update.message.reply_text("Ошибка при сохранении афиши.")
+        else:
+            await update.message.reply_text("Это не фото. Отправь фото.")
+        context.user_data.pop("upload_afisha_active")
 
 # ================= MAIN =================
-if __name__ == "__main__":
+def main():
     app = Application.builder().token(TOKEN).build()
 
     # USER
@@ -227,12 +257,14 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
     # RECEIPTS
-    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
+    app.add_handler(MessageHandler((filters.PHOTO|filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
     # ADMIN
-    # app.add_handler(CommandHandler("admin", admin))
-    # app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
-    # app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler))
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
+    app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha))
 
-    # Запуск бота
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
