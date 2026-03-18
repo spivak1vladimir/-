@@ -16,7 +16,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "ВАШ_TOKEN"  # <- вставьте токен вашего бота
+TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"  # <- вставьте токен вашего бота
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -192,12 +192,16 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if u["id"] == user.id:
                 found = True
                 if update.message.photo or update.message.document:
-                    try: await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
-                    except: pass
+                    try:
+                        await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
+                    except Exception:
+                        pass
                     await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
-                else: await update.message.reply_text("Отправь фото или документ чека.")
+                else:
+                    await update.message.reply_text("Отправь фото или документ чека.")
                 return
-    if not found: await update.message.reply_text("Ты не зарегистрирован.")
+    if not found:
+        await update.message.reply_text("Ты не зарегистрирован.")
 
 # ================= ADMIN =================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -216,8 +220,10 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("manage_"):
         court_key = data.replace("manage_", "")
         kb = admin_court_manage_kb(court_key)
-        if kb: await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
-        else: await q.message.reply_text("На этом корте нет участников.")
+        if kb:
+            await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
+        else:
+            await q.message.reply_text("На этом корте нет участников.")
     elif data.startswith("adm_user_"):
         parts = data.split("_"); _, _, court, idx, action = parts; idx = int(idx)
         if court not in COURTS or idx >= len(COURTS[court]["users"]):
@@ -226,22 +232,37 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "del":
             COURTS[court]["users"].pop(idx)
             save()
-            try: await context.bot.send_message(user["id"], "Ты удалён администратором."); except: pass
+            try:
+                await context.bot.send_message(user["id"], "Ты удалён администратором.")
+            except Forbidden:
+                pass
+            except Exception:
+                pass
             await q.edit_message_text(f"{user['first_name']} удалён.")
         elif action == "pay":
             user["paid"] = True
             save()
-            try: await context.bot.send_message(user["id"], "Оплата подтверждена."); except: pass
+            try:
+                await context.bot.send_message(user["id"], "Оплата подтверждена.")
+            except Forbidden:
+                pass
+            except Exception:
+                pass
             await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
 
 async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if user.id != ADMIN_CHAT_ID or not context.user_data.get("upload_afisha_active"): return
     if update.message.photo:
-        try: photo = update.message.photo[-1]; file = await photo.get_file(); await file.download_to_drive(AFISHA_FILE)
-        except: pass
+        try:
+            photo = update.message.photo[-1]
+            file = await photo.get_file()
+            await file.download_to_drive(AFISHA_FILE)
+        except Exception:
+            pass
         await update.message.reply_text("Афиша обновлена")
-    else: await update.message.reply_text("Это не фото. Отправь фото.")
+    else:
+        await update.message.reply_text("Это не фото. Отправь фото.")
     context.user_data.pop("upload_afisha_active", None)
 
 # ================= MAIN =================
