@@ -16,7 +16,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"  # <- вставьте ваш токен
+TOKEN = "ВАШ_TOKEN"  # <- вставьте токен вашего бота
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -197,8 +197,7 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
                 else: await update.message.reply_text("Отправь фото или документ чека.")
                 return
-    if not found:
-        await update.message.reply_text("Ты не зарегистрирован.")
+    if not found: await update.message.reply_text("Ты не зарегистрирован.")
 
 # ================= ADMIN =================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
