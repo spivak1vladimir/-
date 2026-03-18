@@ -15,7 +15,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAGEsSvmYhEqDCQkgq492mI3zWb_P-BHnAsN"
+TOKEN = "8386482576:AAGEsSvmYhEqDCQkgq492mI3zWb_P-BHnAs"
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
