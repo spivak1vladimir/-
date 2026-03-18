@@ -113,13 +113,13 @@ def admin_court_manage_kb(court_key):
 
 # ================= USER HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if os.path.exists(AFISHA_FILE):
-        try:
+    try:
+        if os.path.exists(AFISHA_FILE):
             with open(AFISHA_FILE, "rb") as f:
                 await update.message.reply_photo(photo=f, caption=START_TEXT, reply_markup=courts_kb())
-        except Exception:
+        else:
             await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
-    else:
+    except:
         await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -145,12 +145,7 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "court": court_key
     })
     save()
-
-    await q.message.reply_text(
-        f"Ты успешно зарегистрирован на {COURTS[court_key]['title']}.\n"
-        "Теперь произведи оплату и отправь чек боту.",
-        reply_markup=user_kb()
-    )
+    await q.message.reply_text(f"Ты зарегистрирован на {COURTS[court_key]['title']}. Оплати и отправь чек.", reply_markup=user_kb())
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -164,10 +159,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save()
                 removed = True
                 break
-    if removed:
-        await q.message.reply_text("Твоя регистрация отменена.")
-    else:
-        await q.message.reply_text("Ты не был зарегистрирован.")
+    await q.message.reply_text("Регистрация отменена." if removed else "Ты не был зарегистрирован.")
 
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -177,13 +169,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for u in c["users"]:
             if u["id"] == uid:
                 status, pos = status_and_position(k, u)
-                await q.message.reply_text(
-                    f"Имя: {u['first_name']}\nUsername: @{u['username']}\nID: {u['id']}\n"
-                    f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\n"
-                    "Оплата по номеру 8 925 826-57-45\nСбербанк / Т-Банк\n"
-                    "Ссылка для оплаты:\nhttps://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n"
-                    "После оплаты нажми на скрепку и отправь в бот чек (фото или файл)."
-                )
+                await q.message.reply_text(f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\nОплата: Сбербанк / Т-Банк\nНомер: 8 925 826-57-45\nСсылка: https://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\nПосле оплаты отправь чек (фото или файл).")
                 return
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,11 +188,11 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 username = f"@{u['username']}" if u.get("username") else "—"
                 text += f"— {u['first_name']} ({username}) — не оплачено\n"
         if len(c["users"]) < c["max_slots"]:
-            text += f"Набралось {len(c['users'])} игроков. Игра будет сокращённая, 1 час.\n"
+            text += f"Набралось {len(c['users'])} игроков. Игра сокращённая, 1 час.\n"
         text += "\n"
     await q.message.reply_text(text)
 
-# ================= RECEIVE RECEIPTS =================
+# ================= RECEIVE CHECKS =================
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if user.id == ADMIN_CHAT_ID:
@@ -218,16 +204,19 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if u["id"] == user.id:
                 found = True
                 if update.message.photo or update.message.document:
-                    await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
-                    await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
+                    try:
+                        await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
+                        await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
+                    except:
+                        pass
                 else:
                     await update.message.reply_text("Отправь фото или документ чека.")
                 return
 
     if not found:
-        await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
+        await update.message.reply_text("Ты не зарегистрирован.")
 
-# ================= ADMIN HANDLERS =================
+# ================= ADMIN =================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
@@ -251,7 +240,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if kb:
             await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
         else:
-            await q.message.reply_text("На этом корте пока нет участников.")
+            await q.message.reply_text("На этом корте нет участников.")
 
     elif data.startswith("adm_user_"):
         parts = data.split("_")
@@ -264,54 +253,46 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "del":
             COURTS[court]["users"].pop(idx)
             save()
-            try:
-                await context.bot.send_message(user["id"], "Ты удалён из списка администратором.")
-            except Forbidden:
-                pass
-            await q.edit_message_text(f"{user['first_name']} удалён из списка.")
+            try: await context.bot.send_message(user["id"], "Ты удалён администратором.")
+            except: pass
+            await q.edit_message_text(f"{user['first_name']} удалён.")
         elif action == "pay":
             user["paid"] = True
             save()
-            try:
-                await context.bot.send_message(user["id"], "Оплата подтверждена администратором.")
-            except Forbidden:
-                pass
+            try: await context.bot.send_message(user["id"], "Оплата подтверждена.")
+            except: pass
             await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
 
-# ================= ADMIN AFISHA HANDLER =================
 async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if user.id != ADMIN_CHAT_ID or not context.user_data.get("upload_afisha_active"):
         return
-
     if update.message.photo:
         try:
             photo = update.message.photo[-1]
             file = await photo.get_file()
             await file.download_to_drive(AFISHA_FILE)
             await update.message.reply_text("Афиша обновлена")
-        except Exception as e:
-            await update.message.reply_text(f"Ошибка при сохранении афиши: {e}")
+        except: pass
     else:
-        await update.message.reply_text("Это не фото. Отправь именно фото.")
-
+        await update.message.reply_text("Это не фото. Отправь фото.")
     context.user_data.pop("upload_afisha_active", None)
 
 # ================= MAIN =================
 async def main():
     app = Application.builder().token(TOKEN).build()
 
-    # USER HANDLERS
+    # USER
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
     app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
-    # RECEIPTS (только для обычных пользователей)
+    # RECEIPTS (users only)
     app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
-    # ADMIN HANDLERS
+    # ADMIN
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
     app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler))
@@ -319,6 +300,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    # Для среды, где уже есть running loop
     nest_asyncio.apply()
-    asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())
