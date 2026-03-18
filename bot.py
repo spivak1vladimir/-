@@ -15,7 +15,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAGEsSvmYhEqDCQkgq492mI3zWb_P-BHnAs"
+TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -125,7 +125,7 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     court_key = q.data.replace("join_", "")
-    
+
     if court_key != PRIMARY_COURT_KEY and len(COURTS[PRIMARY_COURT_KEY]["users"]) < COURTS[PRIMARY_COURT_KEY]["max_slots"]:
         await q.message.reply_text("Сначала заполняем основной корт. Другие корты пока недоступны.")
         return
@@ -188,28 +188,6 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
                 return
 
-# ================= RECEIVE RECEIPTS =================
-async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-
-    if user.id == ADMIN_CHAT_ID:
-        return
-
-    for k, c in COURTS.items():
-        for idx, u in enumerate(c["users"]):
-            if u["id"] == user.id:
-                if update.message.photo or update.message.document:
-                    await context.bot.forward_message(
-                        chat_id=ADMIN_CHAT_ID,
-                        from_chat_id=update.message.chat_id,
-                        message_id=update.message.message_id
-                    )
-                    await update.message.reply_text("Чек получен! Ты зарегистрирован.")
-                return
-
-    await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
-
-# ================= INFO =================
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -230,6 +208,31 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "\n"
     await q.message.reply_text(text)
 
+# ================= RECEIVE RECEIPTS =================
+async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if user.id == ADMIN_CHAT_ID:
+        return
+
+    registered = False
+    for k, c in COURTS.items():
+        for u in c["users"]:
+            if u["id"] == user.id:
+                registered = True
+                if update.message.photo or update.message.document:
+                    await context.bot.forward_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        from_chat_id=update.message.chat_id,
+                        message_id=update.message.message_id
+                    )
+                    await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
+                else:
+                    await update.message.reply_text("Отправь фото или документ чека.")
+                return
+
+    if not registered:
+        await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
+
 # ================= ADMIN HANDLERS =================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -240,11 +243,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
+
     if data == "update_afisha":
-        context.user_data["upload_afisha"] = True
         await q.message.reply_text("Отправь фото афиши для обновления:")
+        context.user_data["upload_afisha_active"] = True
+
     elif data == "manage_courts":
         await q.message.reply_text("Выбери корт для управления:", reply_markup=admin_court_kb())
+
     elif data.startswith("manage_"):
         court_key = data.replace("manage_", "")
         kb = admin_court_manage_kb(court_key)
@@ -252,6 +258,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
         else:
             await q.message.reply_text("На этом корте пока нет участников.")
+
     elif data.startswith("adm_user_"):
         parts = data.split("_")
         _, _, court, idx, action = parts
@@ -277,21 +284,27 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
 
-async def upload_afisha(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+# ================= ADMIN AFISHA HANDLER =================
+async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if user.id != ADMIN_CHAT_ID:
         return
-    if context.user_data.get("upload_afisha"):
-        if update.message.photo:
-            try:
-                photo = update.message.photo[-1]
-                file = await photo.get_file()
-                await file.download_to_drive(AFISHA_FILE)
-                await update.message.reply_text("Афиша обновлена")
-            except Exception as e:
-                await update.message.reply_text(f"Ошибка при сохранении афиши: {e}")
-        else:
-            await update.message.reply_text("Это не фото. Отправь именно фото.")
-        context.user_data.pop("upload_afisha")
+
+    if not context.user_data.get("upload_afisha_active"):
+        return
+
+    if update.message.photo:
+        try:
+            photo = update.message.photo[-1]
+            file = await photo.get_file()
+            await file.download_to_drive(AFISHA_FILE)
+            await update.message.reply_text("Афиша обновлена")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при сохранении афиши: {e}")
+    else:
+        await update.message.reply_text("Это не фото. Отправь именно фото.")
+
+    context.user_data.pop("upload_afisha_active", None)
 
 # ================= MAIN =================
 def main():
@@ -304,13 +317,25 @@ def main():
     app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
-    # RECEIPTS
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
+    # RECEIPTS (только для обычных пользователей)
+    app.add_handler(
+        MessageHandler(
+            (filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID),
+            receive_receipt
+        )
+    )
 
     # ADMIN
     app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_|adm_user_)$"))
-    app.add_handler(MessageHandler(filters.PHOTO, upload_afisha))
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_callback,
+            pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"
+        )
+    )
+    app.add_handler(
+        MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler)
+    )
 
     app.run_polling()
 
