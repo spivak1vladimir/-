@@ -192,7 +192,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "\n"
     await q.message.reply_text(text)
 
-# ================= RECEIVE CHECKS =================
+# ================= RECEIVE CHECKS (FIX) =================
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if user.id == ADMIN_CHAT_ID:
@@ -220,11 +220,8 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not found:
         await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
 
-# ================= ADMIN HANDLERS =================
-# ... оставьте обработчики admin, admin_callback, upload_afisha_handler как в первой версии ...
-
 # ================= MAIN =================
-def main():
+if __name__ == "__main__":
     app = Application.builder().token(TOKEN).build()
 
     # USER
@@ -238,9 +235,7 @@ def main():
     app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
     # ADMIN
-    # app.add_handler(...)  # подключите ваши админские обработчики как раньше
+    # Добавьте ваши админские обработчики здесь как в первой версии
 
+    # Запуск бота без asyncio.run()
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
