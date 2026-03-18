@@ -15,7 +15,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"  # <- вставьте токен вашего бота
+TOKEN = "8386482576:AAHZIT85qbqdZdKe50y-kxtWglEIvcZhTBc"
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -111,13 +111,13 @@ def admin_court_manage_kb(court_key):
 
 # ================= USER HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if os.path.exists(AFISHA_FILE):
-        try:
+    try:
+        if os.path.exists(AFISHA_FILE):
             with open(AFISHA_FILE, "rb") as f:
                 await update.message.reply_photo(photo=f, caption=START_TEXT, reply_markup=courts_kb())
-        except:
+        else:
             await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
-    else:
+    except:
         await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,13 +132,7 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if any(u["id"] == user.id for u in court):
         await q.message.reply_text("Ты уже зарегистрирован.")
         return
-    court.append({
-        "id": user.id,
-        "first_name": user.first_name,
-        "username": user.username,
-        "paid": False,
-        "court": court_key
-    })
+    court.append({"id": user.id, "first_name": user.first_name, "username": user.username, "paid": False, "court": court_key})
     save()
     await q.message.reply_text(f"Ты зарегистрирован на {COURTS[court_key]['title']}. Оплати и отправь чек.", reply_markup=user_kb())
 
@@ -192,12 +186,11 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "\n"
     await q.message.reply_text(text)
 
-# ================= RECEIVE CHECKS (FIX) =================
+# ================= RECEIVE CHECKS =================
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     if user.id == ADMIN_CHAT_ID:
         return
-
     found = False
     for k, c in COURTS.items():
         for u in c["users"]:
@@ -216,9 +209,11 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await update.message.reply_text("Отправь фото или документ чека.")
                 return
-
     if not found:
         await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
+
+# ================= ADMIN HANDLERS =================
+# Здесь вставьте полный admin, admin_callback, upload_afisha_handler как в первой версии
 
 # ================= MAIN =================
 if __name__ == "__main__":
@@ -235,7 +230,9 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
     # ADMIN
-    # Добавьте ваши админские обработчики здесь как в первой версии
+    # app.add_handler(CommandHandler("admin", admin))
+    # app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
+    # app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler))
 
-    # Запуск бота без asyncio.run()
+    # Запуск бота
     app.run_polling()
