@@ -3,7 +3,6 @@ import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import asyncio
-import nest_asyncio
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -17,7 +16,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"
+TOKEN = "8386482576:AAFcBEfXG3N6PFEGOapnZTyKym9OsAlhFsE"  # <- вставьте ваш токен
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -126,24 +125,15 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     court_key = q.data.replace("join_", "")
-
     if court_key != PRIMARY_COURT_KEY and len(COURTS[PRIMARY_COURT_KEY]["users"]) < COURTS[PRIMARY_COURT_KEY]["max_slots"]:
         await q.message.reply_text("Сначала заполняем основной корт. Другие корты пока недоступны.")
         return
-
     user = q.from_user
     court = COURTS[court_key]["users"]
     if any(u["id"] == user.id for u in court):
         await q.message.reply_text("Ты уже зарегистрирован.")
         return
-
-    court.append({
-        "id": user.id,
-        "first_name": user.first_name,
-        "username": user.username,
-        "paid": False,
-        "court": court_key
-    })
+    court.append({"id": user.id, "first_name": user.first_name, "username": user.username, "paid": False, "court": court_key})
     save()
     await q.message.reply_text(f"Ты зарегистрирован на {COURTS[court_key]['title']}. Оплати и отправь чек.", reply_markup=user_kb())
 
@@ -195,110 +185,82 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= RECEIVE CHECKS =================
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    if user.id == ADMIN_CHAT_ID:
-        return
-
+    if user.id == ADMIN_CHAT_ID: return
     found = False
     for k, c in COURTS.items():
         for u in c["users"]:
             if u["id"] == user.id:
                 found = True
                 if update.message.photo or update.message.document:
-                    try:
-                        await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
-                        await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
-                    except:
-                        pass
-                else:
-                    await update.message.reply_text("Отправь фото или документ чека.")
+                    try: await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
+                    except: pass
+                    await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
+                else: await update.message.reply_text("Отправь фото или документ чека.")
                 return
-
     if not found:
         await update.message.reply_text("Ты не зарегистрирован.")
 
 # ================= ADMIN =================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID: return
     await update.message.reply_text("Выбери действие:", reply_markup=admin_main_kb())
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     data = q.data
-
     if data == "update_afisha":
         context.user_data["upload_afisha_active"] = True
         await q.message.reply_text("Отправь фото афиши для обновления:")
-
     elif data == "manage_courts":
         await q.message.reply_text("Выбери корт для управления:", reply_markup=admin_court_kb())
-
     elif data.startswith("manage_"):
         court_key = data.replace("manage_", "")
         kb = admin_court_manage_kb(court_key)
-        if kb:
-            await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
-        else:
-            await q.message.reply_text("На этом корте нет участников.")
-
+        if kb: await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
+        else: await q.message.reply_text("На этом корте нет участников.")
     elif data.startswith("adm_user_"):
-        parts = data.split("_")
-        _, _, court, idx, action = parts
-        idx = int(idx)
+        parts = data.split("_"); _, _, court, idx, action = parts; idx = int(idx)
         if court not in COURTS or idx >= len(COURTS[court]["users"]):
-            await q.edit_message_text("Игрок не найден")
-            return
+            await q.edit_message_text("Игрок не найден"); return
         user = COURTS[court]["users"][idx]
         if action == "del":
             COURTS[court]["users"].pop(idx)
             save()
-            try: await context.bot.send_message(user["id"], "Ты удалён администратором.")
-            except: pass
+            try: await context.bot.send_message(user["id"], "Ты удалён администратором."); except: pass
             await q.edit_message_text(f"{user['first_name']} удалён.")
         elif action == "pay":
             user["paid"] = True
             save()
-            try: await context.bot.send_message(user["id"], "Оплата подтверждена.")
-            except: pass
+            try: await context.bot.send_message(user["id"], "Оплата подтверждена."); except: pass
             await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
 
 async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    if user.id != ADMIN_CHAT_ID or not context.user_data.get("upload_afisha_active"):
-        return
+    if user.id != ADMIN_CHAT_ID or not context.user_data.get("upload_afisha_active"): return
     if update.message.photo:
-        try:
-            photo = update.message.photo[-1]
-            file = await photo.get_file()
-            await file.download_to_drive(AFISHA_FILE)
-            await update.message.reply_text("Афиша обновлена")
+        try: photo = update.message.photo[-1]; file = await photo.get_file(); await file.download_to_drive(AFISHA_FILE)
         except: pass
-    else:
-        await update.message.reply_text("Это не фото. Отправь фото.")
+        await update.message.reply_text("Афиша обновлена")
+    else: await update.message.reply_text("Это не фото. Отправь фото.")
     context.user_data.pop("upload_afisha_active", None)
 
 # ================= MAIN =================
 async def main():
     app = Application.builder().token(TOKEN).build()
-
     # USER
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
     app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
-
-    # RECEIPTS (users only)
+    # RECEIPTS
     app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
-
     # ADMIN
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
     app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler))
-
     await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
