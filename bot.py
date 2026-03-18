@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -13,479 +12,291 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from telegram.error import Forbidden
 
 # ================== CONFIG ==================
-
-# Вариант 1: вставь токен напрямую
-TOKEN = "8618097739:AAEkgPPoH5LAXOxv2-sKZdK8rnfwf5x2CrI"
-
+TOKEN = "8386482576:AAH5IW9JEgagjUdMrTLFvs9gIxFt-Sj6LF0"
 ADMIN_CHAT_ID = 194614510
-DATA_FILE = "trip_users.json"
+DATA_FILE = "registered_users.json"
+AFISHA_FILE = "afisha.jpg"
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
-EVENT = {
-    "title": "Поездка в Казань на забег",
-    "dates": "1–4 мая",
-    "price": 29000,
-    "max_slots": 12,
-    "payment_phone": "8 925 826-57-45",
-    "payment_banks": "Сбербанк / Т-Банк",
-    "payment_link": "https://messenger.online.sberbank.ru/sl/WfKkX7QCNGEQOXLOH",
+COURTS = {
+    "court1": {"title": "Корт 8 человек", "max_slots": 8, "price": 1500,
+               "start": datetime(2026, 3, 19, 21, 30, tzinfo=MOSCOW_TZ), "users": []},
+    "court2": {"title": "Корт 8 человек", "max_slots": 8, "price": 1500,
+               "start": datetime(2026, 3, 19, 21, 30, tzinfo=MOSCOW_TZ), "users": []},
+    "court3": {"title": "Корт 8 человек (дополнительный корт)", "max_slots": 8, "price": 1500,
+               "start": datetime(2026, 3, 19, 22, 0, tzinfo=MOSCOW_TZ), "users": []}
 }
+PRIMARY_COURT_KEY = "court1"
 
-if not TOKEN or "СЮДА_ВСТАВЬ" in TOKEN:
-    raise RuntimeError("Укажи новый токен бота в переменной TOKEN.")
-
-# ================== TEXTS ==================
-
-def places_left():
-    confirmed = len([u for u in users if u.get("active", True)])
-    return max(EVENT["max_slots"] - confirmed, 0)
-
-def start_text():
-    return (
-        f"🏃 {EVENT['title']}\n\n"
-        f"Даты: {EVENT['dates']}\n"
-        f"Стоимость: {EVENT['price']} ₽\n"
-        f"Осталось мест: {places_left()}\n\n"
-        "В стоимость уже включено:\n"
-        "— дорога туда-обратно\n"
-        "— проживание\n"
-        "— завтрак\n"
-        "— подготовка к забегу\n"
-        "— платная дорога\n"
-        "— страховой сбор\n\n"
-        "По отдельности такая поездка выйдет дороже.\n\n"
-        "Нажми кнопку ниже, чтобы зарегистрироваться."
-    )
-
-TERMS_TEXT = (
-    "Условия участия\n\n"
-    "Стоимость поездки: 29 000 ₽.\n\n"
-    "В стоимость включено:\n"
-    "— дорога туда-обратно\n"
-    "— проживание\n"
-    "— завтрак\n"
-    "— подготовка к забегу\n"
-    "— платная дорога\n"
-    "— страховой сбор\n\n"
-    "Страховой сбор уже включён в общую стоимость, потому что мы берём на себя "
-    "риски, связанные с арендой минивэна и дома.\n\n"
-    "Это не отдельная скрытая доплата — всё уже включено.\n"
-    "Если собирать поездку отдельно, оплачивать дорогу, жильё и организацию самостоятельно, "
-    "выйдет дороже.\n\n"
-    "Продолжая регистрацию, ты соглашаешься с этими условиями."
-)
-
-INFO_TEXT = (
-    "Что входит в стоимость\n\n"
-    "Цена участия: 29 000 ₽\n\n"
-    "Включено:\n"
-    "— дорога туда-обратно\n"
-    "— проживание\n"
-    "— завтрак\n"
-    "— подготовка к забегу\n"
-    "— платная дорога\n"
-    "— страховой сбор\n\n"
-    "Страховой сбор включён, потому что организатор берёт на себя риски за минивэн и дом.\n\n"
-    "Для участника это удобная фиксированная цена без скрытых расходов.\n"
-    "По отдельности поездка обойдётся дороже."
-)
-
-PAY_TEXT = (
-    "Оплата участия\n\n"
-    "Стоимость: 29 000 ₽\n\n"
-    "В сумму уже входит:\n"
-    "— дорога туда-обратно\n"
-    "— проживание\n"
-    "— завтрак\n"
-    "— подготовка к забегу\n"
-    "— платная дорога\n"
-    "— страховой сбор\n\n"
-    "Страховой сбор включён, так как мы берём риски за минивэн и дом.\n"
-    "По отдельности такая поездка выйдет дороже.\n\n"
-    "Оплата по номеру:\n"
-    "8 925 826-57-45\n"
-    "Сбербанк / Т-Банк\n\n"
-    "Ссылка для оплаты:\n"
-    "https://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n\n"
-    "После оплаты отправь в бот чек: фото или файл."
-)
-
-SUCCESS_PAYMENT_TEXT = (
-    "Оплата подтверждена.\n\n"
-    "Ты успешно зарегистрирован в поездку в Казань.\n"
-    "Позже отправим детали по выезду, проживанию и программе."
+START_TEXT = (
+    "Игра в волейбол Spivak Run\n\n"
+    "Пляжный центр «Лето»\n"
+    "проспект маршала жукова 4 строение 2\n\n"
+    "https://yandex.ru/maps/-/CLh3JG0S\n\n"
+    "Дата: 19 марта 2026\n"
+    "Сбор: 21:20\n"
+    "Начало игры: 21:30\n\n"
+    "Выбери корт:"
 )
 
 # ================== STORAGE ==================
-
-def load_users():
+def load():
     if not os.path.exists(DATA_FILE):
-        return []
+        return {k: [] for k in COURTS}
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def save_users():
+def save():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+        json.dump({k: COURTS[k]["users"] for k in COURTS}, f, ensure_ascii=False, indent=2)
 
-users = load_users()
+data = load()
+for k in COURTS:
+    COURTS[k]["users"] = data.get(k, [])
 
 # ================== HELPERS ==================
+def paid_sorted(court_key):
+    users = COURTS[court_key]["users"]
+    paid = [u for u in users if u["paid"]]
+    unpaid = [u for u in users if not u["paid"]]
+    return paid, unpaid
 
-def find_user(user_id: int):
-    for u in users:
-        if u["id"] == user_id:
-            return u
-    return None
-
-def active_users():
-    return [u for u in users if u.get("active", True)]
-
-def is_valid_phone(phone: str):
-    digits = re.sub(r"\D", "", phone)
-    return len(digits) >= 10
+def status_and_position(court_key, user):
+    paid, unpaid = paid_sorted(court_key)
+    if user["paid"] and user in paid[:COURTS[court_key]["max_slots"]]:
+        return "Основной состав", paid.index(user) + 1
+    if user["paid"]:
+        return "Лист ожидания", paid.index(user) + 1
+    return "Лист ожидания", unpaid.index(user) + 1
 
 # ================== KEYBOARDS ==================
-
-def start_kb():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(" Зарегистрироваться", callback_data="register")],
-        [InlineKeyboardButton(" Что входит в стоимость", callback_data="info")],
-        [InlineKeyboardButton(" Сколько осталось мест", callback_data="places")],
-    ])
-
-def terms_kb():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Согласен, продолжить", callback_data="agree_terms")],
-        [InlineKeyboardButton("Назад", callback_data="back_start")],
-    ])
+def courts_kb():
+    primary = COURTS[PRIMARY_COURT_KEY]
+    keys = [PRIMARY_COURT_KEY] if len(primary["users"]) < primary["max_slots"] else list(COURTS.keys())
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(COURTS[k]["title"], callback_data=f"join_{k}")] for k in keys]
+    )
 
 def user_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(" Оплатить", callback_data="pay")],
-        [InlineKeyboardButton(" Моя анкета", callback_data="profile")],
-        [InlineKeyboardButton(" Информация", callback_data="info")],
-        [InlineKeyboardButton(" Отменить участие", callback_data="cancel")],
+        [InlineKeyboardButton("Оплатить", callback_data="pay")],
+        [InlineKeyboardButton("Отменить участие", callback_data="cancel")],
+        [InlineKeyboardButton("Информация по игре", callback_data="info")]
     ])
 
-def admin_user_kb(user_id: int):
+def admin_main_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(" Подтвердить оплату", callback_data=f"adm_pay_{user_id}")],
-        [InlineKeyboardButton(" Удалить участника", callback_data=f"adm_del_{user_id}")],
+        [InlineKeyboardButton("Обновить афишу", callback_data="update_afisha")],
+        [InlineKeyboardButton("Управление участниками", callback_data="manage_courts")]
     ])
 
-# ================== USER FLOW ==================
+def admin_court_kb():
+    rows = []
+    for k in COURTS:
+        rows.append([InlineKeyboardButton(COURTS[k]["title"], callback_data=f"manage_{k}")])
+    return InlineKeyboardMarkup(rows)
 
+def admin_court_manage_kb(court_key):
+    rows = []
+    for i, u in enumerate(COURTS[court_key]["users"]):
+        name = u.get("first_name") or "Без имени"
+        rows.append([
+            InlineKeyboardButton(f"{i+1}. {name}", callback_data=f"adm_user_{court_key}_{i}_pay"),
+            InlineKeyboardButton("Удалить", callback_data=f"adm_user_{court_key}_{i}_del")
+        ])
+    return InlineKeyboardMarkup(rows) if rows else None
+
+# ================== USER HANDLERS ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text(start_text(), reply_markup=start_kb())
+    if os.path.exists(AFISHA_FILE):
+        with open(AFISHA_FILE, "rb") as f:
+            await update.message.reply_photo(photo=f, caption=START_TEXT, reply_markup=courts_kb())
+    else:
+        await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
 
-async def back_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    context.user_data.clear()
-    await q.message.reply_text(start_text(), reply_markup=start_kb())
+    court_key = q.data.replace("join_", "")
+    
+    if court_key != PRIMARY_COURT_KEY and len(COURTS[PRIMARY_COURT_KEY]["users"]) < COURTS[PRIMARY_COURT_KEY]["max_slots"]:
+        await q.message.reply_text("Сначала заполняем основной корт. Другие корты пока недоступны.")
+        return
 
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.message.reply_text(INFO_TEXT)
+    user = q.from_user
+    court = COURTS[court_key]["users"]
+    if any(u["id"] == user.id for u in court):
+        await q.message.reply_text("Ты уже зарегистрирован.")
+        return
 
-async def places(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+    court.append({
+        "id": user.id,
+        "first_name": user.first_name,
+        "username": user.username,
+        "paid": False,
+        "court": court_key
+    })
+    save()
+
     await q.message.reply_text(
-        f"Свободных мест осталось: {places_left()} из {EVENT['max_slots']}"
+        f"Ты успешно зарегистрирован на {COURTS[court_key]['title']}.\n"
+        "Теперь произведи оплату и отправь чек боту.",
+        reply_markup=user_kb()
     )
-
-async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    if places_left() <= 0:
-        await q.message.reply_text("Свободных мест больше нет.")
-        return
-
-    await q.message.reply_text(TERMS_TEXT, reply_markup=terms_kb())
-
-async def agree_terms(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    tg_user = q.from_user
-    existing = find_user(tg_user.id)
-
-    if existing and existing.get("active", True):
-        await q.message.reply_text(
-            "Ты уже есть в списке участников.",
-            reply_markup=user_kb()
-        )
-        return
-
-    context.user_data["registration_step"] = "fio"
-    await q.message.reply_text("Напиши ФИО полностью:")
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    tg_user = update.effective_user
-    step = context.user_data.get("registration_step")
-
-    # Админский режим сообщений
-    admin_mode = context.user_data.get("admin_msg_mode")
-    if tg_user.id == ADMIN_CHAT_ID and admin_mode:
-        await admin_text_sender(update, context)
-        return
-
-    if not step:
-        return
-
-    if step == "fio":
-        context.user_data["fio"] = text
-        context.user_data["registration_step"] = "phone"
-        await update.message.reply_text("Напиши номер телефона:")
-
-    elif step == "phone":
-        if not is_valid_phone(text):
-            await update.message.reply_text("Номер выглядит некорректно. Напиши телефон ещё раз.")
-            return
-
-        context.user_data["phone"] = text
-        context.user_data["registration_step"] = "city"
-        await update.message.reply_text("Напиши свой город:")
-
-    elif step == "city":
-        context.user_data["city"] = text
-
-        existing = find_user(tg_user.id)
-        if existing:
-            existing["fio"] = context.user_data["fio"]
-            existing["phone"] = context.user_data["phone"]
-            existing["city"] = context.user_data["city"]
-            existing["username"] = tg_user.username or ""
-            existing["first_name"] = tg_user.first_name or ""
-            existing["paid"] = existing.get("paid", False)
-            existing["active"] = True
-        else:
-            users.append({
-                "id": tg_user.id,
-                "first_name": tg_user.first_name or "",
-                "username": tg_user.username or "",
-                "fio": context.user_data["fio"],
-                "phone": context.user_data["phone"],
-                "city": context.user_data["city"],
-                "paid": False,
-                "active": True,
-                "created_at": datetime.now(MOSCOW_TZ).isoformat(),
-            })
-
-        save_users()
-        context.user_data.pop("registration_step", None)
-
-        await update.message.reply_text(
-            "✅ Анкета заполнена.\n\n"
-            "Теперь для подтверждения участия нужно внести оплату.",
-            reply_markup=user_kb()
-        )
-
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    user = find_user(q.from_user.id)
-    if not user:
-        await q.message.reply_text("Сначала зарегистрируйся через /start")
-        return
-
-    username = f"@{user['username']}" if user.get("username") else "—"
-    paid = "оплачено" if user.get("paid") else "не оплачено"
-
-    text = (
-        "📝 Твоя анкета\n\n"
-        f"ФИО: {user.get('fio', '—')}\n"
-        f"Телефон: {user.get('phone', '—')}\n"
-        f"Город: {user.get('city', '—')}\n"
-        f"Username: {username}\n"
-        f"Статус оплаты: {paid}"
-    )
-    await q.message.reply_text(text)
-
-async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    user = find_user(q.from_user.id)
-    if not user:
-        await q.message.reply_text("Сначала зарегистрируйся через /start")
-        return
-
-    await q.message.reply_text(PAY_TEXT)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    uid = q.from_user.id
+    removed = False
+    for c in COURTS.values():
+        for u in c["users"]:
+            if u["id"] == uid:
+                c["users"].remove(u)
+                save()
+                removed = True
+                break
+    if removed:
+        await q.message.reply_text("Твоя регистрация отменена.")
+    else:
+        await q.message.reply_text("Ты не был зарегистрирован.")
 
-    user = find_user(q.from_user.id)
-    if not user or not user.get("active", True):
-        await q.message.reply_text("Тебя нет в активном списке участников.")
-        return
-
-    user["active"] = False
-    save_users()
-    await q.message.reply_text("Твоя регистрация отменена.")
+async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    for k, c in COURTS.items():
+        for u in c["users"]:
+            if u["id"] == uid:
+                status, pos = status_and_position(k, u)
+                try:
+                    await q.message.reply_text(
+                        f"Имя: {u['first_name']}\nUsername: @{u['username']}\nID: {u['id']}\n"
+                        f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\n"
+                        "Оплата по номеру 8 925 826-57-45\nСбербанк / Т-Банк\n"
+                        "Ссылка для оплаты:\nhttps://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n"
+                        "После оплаты нажми на скрепку и отправь в бот чек (фото или файл)."
+                    )
+                except Forbidden:
+                    pass
+                return
 
 async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_user = update.message.from_user
-    user = find_user(tg_user.id)
+    user = update.message.from_user
+    for k, c in COURTS.items():
+        for idx, u in enumerate(c["users"]):
+            if u["id"] == user.id:
+                # Пересылаем админу
+                await context.bot.forward_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    from_chat_id=update.message.chat_id,
+                    message_id=update.message.message_id
+                )
+                await update.message.reply_text("Чек получен! Ты зарегистрирован.")
+                return
+    await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
 
-    if not user or not user.get("active", True):
-        await update.message.reply_text("Сначала зарегистрируйся через /start")
-        return
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    text = "Информация по игре:\n\n"
+    for k, c in COURTS.items():
+        text += f"{c['title']}:\n"
+        paid, unpaid = paid_sorted(k)
+        if paid:
+            for i, u in enumerate(paid[:c["max_slots"]], 1):
+                username = f"@{u['username']}" if u.get("username") else "—"
+                text += f"{i}. {u['first_name']} ({username}) — оплачено\n"
+        if unpaid:
+            for i, u in enumerate(unpaid, 1):
+                username = f"@{u['username']}" if u.get("username") else "—"
+                text += f"— {u['first_name']} ({username}) — не оплачено\n"
+        if len(c["users"]) < c["max_slots"]:
+            text += f"Набралось {len(c['users'])} игроков. Игра будет сокращённая, 1 час.\n"
+        text += "\n"
+    await q.message.reply_text(text)
 
-    await context.bot.forward_message(
-        chat_id=ADMIN_CHAT_ID,
-        from_chat_id=update.message.chat_id,
-        message_id=update.message.message_id
-    )
-
-    username = f"@{user['username']}" if user.get("username") else "—"
-
-    admin_text = (
-        "📩 Новый чек на подтверждение\n\n"
-        f"ФИО: {user.get('fio', '—')}\n"
-        f"Телефон: {user.get('phone', '—')}\n"
-        f"Город: {user.get('city', '—')}\n"
-        f"Username: {username}\n"
-        f"Telegram ID: {user['id']}\n"
-        f"Поездка: {EVENT['title']}\n"
-        f"Стоимость: {EVENT['price']} ₽"
-    )
-
-    await context.bot.send_message(
-        ADMIN_CHAT_ID,
-        admin_text,
-        reply_markup=admin_user_kb(user["id"])
-    )
-
-    await update.message.reply_text(
-        "Чек отправлен на проверку. После подтверждения оплаты ты получишь сообщение."
-    )
-
-# ================== ADMIN ==================
-
+# ================== ADMIN HANDLERS ==================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
+    await update.message.reply_text("Выбери действие:", reply_markup=admin_main_kb())
 
-    current_users = active_users()
-
-    if not current_users:
-        await update.message.reply_text("Пока нет зарегистрированных участников.")
-        return
-
-    lines = [
-        f"📋 Участники поездки\n",
-        f"Всего активных: {len(current_users)}",
-        f"Свободных мест: {places_left()}",
-        ""
-    ]
-
-    for i, u in enumerate(current_users, start=1):
-        paid = "оплачено" if u.get("paid") else "не оплачено"
-        username = f"@{u['username']}" if u.get("username") else "—"
-        lines.append(
-            f"{i}. {u.get('fio', u.get('first_name', 'Без имени'))}\n"
-            f"   {username} | {u.get('phone', '—')} | {u.get('city', '—')} | {paid}"
-        )
-
-    await update.message.reply_text("\n".join(lines))
-
-async def admin_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    data = q.data
+    if data == "update_afisha":
+        context.user_data["upload_afisha"] = True
+        await q.message.reply_text("Отправь фото афиши для обновления:")
+    elif data == "manage_courts":
+        await q.message.reply_text("Выбери корт для управления:", reply_markup=admin_court_kb())
+    elif data.startswith("manage_"):
+        court_key = data.replace("manage_", "")
+        kb = admin_court_manage_kb(court_key)
+        if kb:
+            await q.message.reply_text(f"Управление {COURTS[court_key]['title']}:", reply_markup=kb)
+        else:
+            await q.message.reply_text("На этом корте пока нет участников.")
+    elif data.startswith("adm_user_"):
+        parts = data.split("_")
+        _, _, court, idx, action = parts
+        idx = int(idx)
+        if court not in COURTS or idx >= len(COURTS[court]["users"]):
+            await q.edit_message_text("Игрок не найден")
+            return
+        user = COURTS[court]["users"][idx]
+        if action == "del":
+            COURTS[court]["users"].pop(idx)
+            save()
+            try:
+                await context.bot.send_message(user["id"], "Ты удалён из списка администратором.")
+            except Forbidden:
+                pass
+            await q.edit_message_text(f"{user['first_name']} удалён из списка.")
+        elif action == "pay":
+            user["paid"] = True
+            save()
+            try:
+                await context.bot.send_message(user["id"], "Оплата подтверждена администратором.")
+            except Forbidden:
+                pass
+            await q.edit_message_text(f"{user['first_name']} оплата подтверждена.")
 
-    if q.from_user.id != ADMIN_CHAT_ID:
-        return
-
-    user_id = int(q.data.replace("adm_pay_", ""))
-    user = find_user(user_id)
-
-    if not user:
-        await q.edit_message_text("Участник не найден.")
-        return
-
-    user["paid"] = True
-    save_users()
-
-    await context.bot.send_message(user_id, SUCCESS_PAYMENT_TEXT)
-    await q.edit_message_text("Оплата подтверждена.")
-
-async def admin_del(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    if q.from_user.id != ADMIN_CHAT_ID:
-        return
-
-    user_id = int(q.data.replace("adm_del_", ""))
-    user = find_user(user_id)
-
-    if not user:
-        await q.edit_message_text("Участник не найден.")
-        return
-
-    user["active"] = False
-    save_users()
-
-    await context.bot.send_message(user_id, "Твоя регистрация отменена администратором.")
-    await q.edit_message_text("Участник удалён из активного списка.")
-
-async def admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def upload_afisha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
-
-    context.user_data["admin_msg_mode"] = "all"
-    await update.message.reply_text("Напиши сообщение для всех активных участников:")
-
-async def admin_text_sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
-
-    mode = context.user_data.get("admin_msg_mode")
-    if mode != "all":
-        return
-
-    text = update.message.text
-    for u in active_users():
-        await context.bot.send_message(u["id"], text)
-
-    context.user_data.pop("admin_msg_mode", None)
-    await update.message.reply_text("Сообщение отправлено всем активным участникам.")
+    if context.user_data.get("upload_afisha"):
+        if update.message.photo:
+            photo = update.message.photo[-1]
+            file = await photo.get_file()
+            await file.download_to_drive(AFISHA_FILE)
+            await update.message.reply_text("Афиша обновлена")
+        else:
+            await update.message.reply_text("Это не фото. Отправь именно фото.")
+        context.user_data.pop("upload_afisha")
 
 # ================== MAIN ==================
-
 def main():
     app = Application.builder().token(TOKEN).build()
 
+    # USER
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("admin_message", admin_message))
-
-    app.add_handler(CallbackQueryHandler(back_start, pattern="^back_start$"))
-    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
-    app.add_handler(CallbackQueryHandler(places, pattern="^places$"))
-    app.add_handler(CallbackQueryHandler(register, pattern="^register$"))
-    app.add_handler(CallbackQueryHandler(agree_terms, pattern="^agree_terms$"))
-    app.add_handler(CallbackQueryHandler(profile, pattern="^profile$"))
+    app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
     app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
     app.add_handler(CallbackQueryHandler(cancel, pattern="^cancel$"))
+    app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
-    app.add_handler(CallbackQueryHandler(admin_pay, pattern="^adm_pay_"))
-    app.add_handler(CallbackQueryHandler(admin_del, pattern="^adm_del_"))
-
+    # RECEIPTS
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, receive_receipt))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # ADMIN
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_|adm_user_)$"))
+    app.add_handler(MessageHandler(filters.PHOTO, upload_afisha))
 
     app.run_polling()
 
