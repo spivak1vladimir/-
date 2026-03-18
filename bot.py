@@ -2,6 +2,8 @@ import os
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import asyncio
+import nest_asyncio
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -115,8 +117,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with open(AFISHA_FILE, "rb") as f:
                 await update.message.reply_photo(photo=f, caption=START_TEXT, reply_markup=courts_kb())
-        except Exception as e:
-            print("Ошибка при загрузке афиши:", e)
+        except Exception:
             await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
     else:
         await update.message.reply_text(START_TEXT, reply_markup=courts_kb())
@@ -176,16 +177,13 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for u in c["users"]:
             if u["id"] == uid:
                 status, pos = status_and_position(k, u)
-                try:
-                    await q.message.reply_text(
-                        f"Имя: {u['first_name']}\nUsername: @{u['username']}\nID: {u['id']}\n"
-                        f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\n"
-                        "Оплата по номеру 8 925 826-57-45\nСбербанк / Т-Банк\n"
-                        "Ссылка для оплаты:\nhttps://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n"
-                        "После оплаты нажми на скрепку и отправь в бот чек (фото или файл)."
-                    )
-                except Forbidden:
-                    pass
+                await q.message.reply_text(
+                    f"Имя: {u['first_name']}\nUsername: @{u['username']}\nID: {u['id']}\n"
+                    f"Корт: {c['title']}\nСтоимость: {c['price']} ₽\nСтатус: {status}\nПозиция: {pos}\n\n"
+                    "Оплата по номеру 8 925 826-57-45\nСбербанк / Т-Банк\n"
+                    "Ссылка для оплаты:\nhttps://messenger.online.sberbank.ru/sl/7yOSdYz0k38b6kC9G\n"
+                    "После оплаты нажми на скрепку и отправь в бот чек (фото или файл)."
+                )
                 return
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,23 +212,19 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id == ADMIN_CHAT_ID:
         return
 
-    registered = False
+    found = False
     for k, c in COURTS.items():
         for u in c["users"]:
             if u["id"] == user.id:
-                registered = True
+                found = True
                 if update.message.photo or update.message.document:
-                    await context.bot.forward_message(
-                        chat_id=ADMIN_CHAT_ID,
-                        from_chat_id=update.message.chat_id,
-                        message_id=update.message.message_id
-                    )
+                    await context.bot.forward_message(ADMIN_CHAT_ID, update.message.chat_id, update.message.message_id)
                     await update.message.reply_text("Чек получен! Оплата будет подтверждена администратором.")
                 else:
                     await update.message.reply_text("Отправь фото или документ чека.")
                 return
 
-    if not registered:
+    if not found:
         await update.message.reply_text("Ты не зарегистрирован. Сначала выбери корт.")
 
 # ================= ADMIN HANDLERS =================
@@ -245,8 +239,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
 
     if data == "update_afisha":
-        await q.message.reply_text("Отправь фото афиши для обновления:")
         context.user_data["upload_afisha_active"] = True
+        await q.message.reply_text("Отправь фото афиши для обновления:")
 
     elif data == "manage_courts":
         await q.message.reply_text("Выбери корт для управления:", reply_markup=admin_court_kb())
@@ -287,10 +281,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= ADMIN AFISHA HANDLER =================
 async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    if user.id != ADMIN_CHAT_ID:
-        return
-
-    if not context.user_data.get("upload_afisha_active"):
+    if user.id != ADMIN_CHAT_ID or not context.user_data.get("upload_afisha_active"):
         return
 
     if update.message.photo:
@@ -307,10 +298,10 @@ async def upload_afisha_handler(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.pop("upload_afisha_active", None)
 
 # ================= MAIN =================
-def main():
+async def main():
     app = Application.builder().token(TOKEN).build()
 
-    # USER
+    # USER HANDLERS
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(join, pattern="^join_"))
     app.add_handler(CallbackQueryHandler(pay, pattern="^pay$"))
@@ -318,26 +309,16 @@ def main():
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
     # RECEIPTS (только для обычных пользователей)
-    app.add_handler(
-        MessageHandler(
-            (filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID),
-            receive_receipt
-        )
-    )
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
-    # ADMIN
+    # ADMIN HANDLERS
     app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(
-        CallbackQueryHandler(
-            admin_callback,
-            pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"
-        )
-    )
-    app.add_handler(
-        MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler)
-    )
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(update_afisha|manage_courts|manage_.*|adm_user_.*)$"))
+    app.add_handler(MessageHandler(filters.PHOTO & filters.User(user_id=ADMIN_CHAT_ID), upload_afisha_handler))
 
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    # Для среды, где уже есть running loop
+    nest_asyncio.apply()
+    asyncio.run(main())
