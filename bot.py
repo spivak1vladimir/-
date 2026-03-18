@@ -11,7 +11,7 @@ from telegram.ext import (
 from telegram.error import Forbidden
 
 # ================= CONFIG =================
-TOKEN = "8386482576:AAHZIT85qbqdZdKe50y-kxtWglEIvcZhTBc"
+TOKEN = "8386482576:AAHmB6nYtOP1xzR9kVTK4hTHSxT01k4g0io"
 ADMIN_CHAT_ID = 194614510
 DATA_FILE = "registered_users.json"
 AFISHA_FILE = "afisha.jpg"
@@ -103,6 +103,7 @@ def admin_court_manage_kb(court_key):
 
 # ================= USER HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update
     try:
         if os.path.exists(AFISHA_FILE):
             with open(AFISHA_FILE, "rb") as f:
@@ -257,7 +258,7 @@ def main():
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
     # RECEIPTS
-    app.add_handler(MessageHandler((filters.PHOTO|filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
+    app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.User(user_id=ADMIN_CHAT_ID), receive_receipt))
 
     # ADMIN
     app.add_handler(CommandHandler("admin", admin))
