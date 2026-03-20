@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, Request
 from telegram.error import NetworkError, TimedOut
 
 # ---------------- НАСТРОЙКИ ----------------
@@ -35,7 +35,12 @@ def save_data():
         json.dump(registered_users, f, ensure_ascii=False, indent=2)
 
 def build_info_text():
-    text = f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\nСтарт: {START_POINT}\nСбор: 10:30\nСтарт: 11:00\n\nМаршрут 10 км:\n{START_MAP_LINK_10KM}\n\nУчастники ({len(registered_users)}):\n"
+    text = (
+        f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\n"
+        f"Старт: {START_POINT}\nСбор: 10:30\nСтарт: 11:00\n\n"
+        f"Маршрут 10 км:\n{START_MAP_LINK_10KM}\n\n"
+        f"Участники ({len(registered_users)}):\n"
+    )
     if not registered_users:
         text += "— пока нет участников"
     else:
@@ -141,7 +146,12 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"{removed['name']} удалён из списка.")
 
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
-    text = f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\nЗавтра воскресный забег.\n\nСтарт: {START_POINT}\nСбор: 10:30\nСтарт: 11:00\n\nМаршрут 10 км:\n{START_MAP_LINK_10KM}"
+    text = (
+        f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\n"
+        "Завтра воскресный забег.\n\n"
+        f"Старт: {START_POINT}\nСбор: 10:30\nСтарт: 11:00\n\n"
+        f"Маршрут 10 км:\n{START_MAP_LINK_10KM}"
+    )
     for u in registered_users:
         try:
             await context.bot.send_message(chat_id=int(u["id"]), text=text)
@@ -157,7 +167,9 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- ЗАПУСК ----------------
 def main():
-    app = Application.builder().token(TOKEN).build()
+    # создаём объект Request с увеличенными таймаутами
+    request = Request(connect_timeout=20, read_timeout=30)
+    app = Application.builder().token(TOKEN).request(request).build()
 
     # команды
     app.add_handler(CommandHandler("start", start))
@@ -175,7 +187,7 @@ def main():
     app.job_queue.run_once(send_reminder, reminder_time)
 
     logger.info("Воскресный бот запущен")
-    app.run_polling()  # безопасный запуск, без asyncio.run()
+    app.run_polling()  # безопасно, с автоматическим reconnect
 
 if __name__ == "__main__":
     main()
