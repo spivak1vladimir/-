@@ -11,7 +11,7 @@ from telegram.error import NetworkError, TimedOut
 TOKEN = "8704370355:AAGD1UepSyr3uZ_E2kk4H9IAUdgvVqQa9Ls"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 15
-DATA_FILE = "registered_users_sunday.json"
+DATA_FILE = "registered_users_sunday.json"  # отдельный файл для воскресного бота
 
 # Данные воскресного забега
 RUN_DATETIME = datetime(2026, 3, 23, 11, 0)
@@ -182,6 +182,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- ЗАПУСК ----------------
 async def run_bot():
+    # --- исправление для v20+ ---
     request = Request(connect_timeout=20, read_timeout=30)
     app = Application.builder().token(TOKEN).request(request).build()
 
