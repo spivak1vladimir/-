@@ -4,13 +4,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    Request
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.error import NetworkError, TimedOut
 
 # ---------------- НАСТРОЙКИ ВОСКРЕСНОГО БОТА ----------------
@@ -19,7 +13,6 @@ ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 15
 DATA_FILE = "registered_users_sunday.json"
 
-# Данные воскресного забега
 RUN_DATETIME = datetime(2026, 3, 23, 11, 0)
 RUN_DATE_TEXT = "23.03.26"
 RUN_TITLE_TEXT = "Воскресный забег — Cosmic latte, Москва"
@@ -188,22 +181,21 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- ЗАПУСК ----------------
 async def run_bot():
-    # --- исправление для v20+ ---
-    request = Request(connect_timeout=20, read_timeout=30)
-    app = Application.builder().token(TOKEN).request(request).build()
+    # без Request — просто строим приложение стандартно
+    app = Application.builder().token(TOKEN).build()
 
     # команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("info", info))
     app.add_handler(CommandHandler("admin", admin))
 
-    # обработчики кнопок
+    # кнопки
     app.add_handler(CallbackQueryHandler(register, pattern="^agree$"))
     app.add_handler(CallbackQueryHandler(cancel_registration, pattern="^cancel$"))
     app.add_handler(CallbackQueryHandler(admin_actions, pattern="^del_"))
     app.add_handler(CallbackQueryHandler(info, pattern="^info$"))
 
-    # напоминание за 24 часа
+    # напоминание
     reminder_time = RUN_DATETIME - timedelta(hours=24)
     app.job_queue.run_once(send_reminder, reminder_time)
 
