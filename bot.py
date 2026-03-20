@@ -3,7 +3,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Request
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.error import NetworkError, TimedOut
 
@@ -11,10 +11,10 @@ from telegram.error import NetworkError, TimedOut
 TOKEN = "8704370355:AAGD1UepSyr3uZ_E2kk4H9IAUdgvVqQa9Ls"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 15
-DATA_FILE = "registered_users_sunday.json"  # отдельный файл для воскресного бота
+DATA_FILE = "registered_users_sunday.json"
 
 # Данные воскресного забега
-RUN_DATETIME = datetime(2026, 3, 23, 11, 0)  # пример даты воскресного забега
+RUN_DATETIME = datetime(2026, 3, 23, 11, 0)
 RUN_DATE_TEXT = "23.03.26"
 RUN_TITLE_TEXT = "Воскресный забег — Cosmic latte, Москва"
 START_POINT = "Cosmic latte, кофейня, Якиманский пер., 6, стр. 1, Москва"
@@ -182,10 +182,8 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- ЗАПУСК ----------------
 async def run_bot():
-    app = Application.builder().token(TOKEN).request_kwargs({
-        "connect_timeout": 20,
-        "read_timeout": 30
-    }).build()
+    request = Request(connect_timeout=20, read_timeout=30)
+    app = Application.builder().token(TOKEN).request(request).build()
 
     # команды
     app.add_handler(CommandHandler("start", start))
