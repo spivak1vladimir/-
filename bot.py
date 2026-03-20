@@ -52,7 +52,16 @@ def info_keyboard():
 
 # ---------------- ФУНКЦИИ ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\nРад, что ты присоединился к воскресному забегу.\n\nУсловия участия:\n— Участник самостоятельно несёт ответственность за свою жизнь и здоровье.\n— Участник несёт ответственность за сохранность личных вещей.\n— Согласие на обработку персональных данных.\n— Согласие на фото- и видеосъёмку.\n\nЕсли согласен — нажми кнопку ниже."
+    text = (
+        f"{RUN_DATE_TEXT}\n{RUN_TITLE_TEXT}\n\n"
+        "Рад, что ты присоединился к воскресному забегу.\n\n"
+        "Условия участия:\n"
+        "— Участник самостоятельно несёт ответственность за свою жизнь и здоровье.\n"
+        "— Участник несёт ответственность за сохранность личных вещей.\n"
+        "— Согласие на обработку персональных данных.\n"
+        "— Согласие на фото- и видеосъёмку.\n\n"
+        "Если согласен — нажми кнопку ниже."
+    )
     keyboard = [
         [InlineKeyboardButton("Согласен, зарегистрироваться (10 км)", callback_data="agree")],
         [InlineKeyboardButton("Информация о забеге", callback_data="info")]
@@ -76,7 +85,10 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     registered_users.append(user_data)
     save_data()
     try:
-        await context.bot.send_message(ADMIN_CHAT_ID, f"Новый участник воскресного забега\nИмя: {user.first_name}\nUsername: @{user.username or '-'}\nID: {user_id}")
+        await context.bot.send_message(
+            ADMIN_CHAT_ID,
+            f"Новый участник воскресного забега\nИмя: {user.first_name}\nUsername: @{user.username or '-'}\nID: {user_id}"
+        )
     except (NetworkError, TimedOut):
         logger.warning("Не удалось отправить сообщение админу о новом участнике.")
     await query.edit_message_text(build_info_text(), reply_markup=info_keyboard())
@@ -90,7 +102,10 @@ async def cancel_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
             registered_users.remove(u)
             save_data()
             try:
-                await context.bot.send_message(ADMIN_CHAT_ID, f"Участник отменил регистрацию воскресного забега\nИмя: {u['name']}\nUsername: @{u['username']}\nID: {u['id']}")
+                await context.bot.send_message(
+                    ADMIN_CHAT_ID,
+                    f"Участник отменил регистрацию воскресного забега\nИмя: {u['name']}\nUsername: @{u['username']}\nID: {u['id']}"
+                )
             except (NetworkError, TimedOut):
                 logger.warning("Не удалось уведомить админа об отмене регистрации.")
             break
@@ -133,7 +148,10 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
         except (NetworkError, TimedOut):
             logger.warning(f"Не удалось отправить напоминание пользователю {u['id']}")
     try:
-        await context.bot.send_message(ADMIN_CHAT_ID, f"Напоминание отправлено.\nВсего участников: {len(registered_users)}")
+        await context.bot.send_message(
+            ADMIN_CHAT_ID,
+            f"Напоминание отправлено.\nВсего участников: {len(registered_users)}"
+        )
     except (NetworkError, TimedOut):
         logger.warning("Не удалось уведомить админа о рассылке напоминаний.")
 
@@ -157,7 +175,7 @@ def main():
     app.job_queue.run_once(send_reminder, reminder_time)
 
     logger.info("Воскресный бот запущен")
-    app.run_polling()
+    app.run_polling()  # безопасный запуск, без asyncio.run()
 
 if __name__ == "__main__":
     main()
