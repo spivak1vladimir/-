@@ -3,15 +3,21 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Request
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    Request
+)
 from telegram.error import NetworkError, TimedOut
 
 # ---------------- НАСТРОЙКИ ВОСКРЕСНОГО БОТА ----------------
 TOKEN = "8704370355:AAGD1UepSyr3uZ_E2kk4H9IAUdgvVqQa9Ls"
 ADMIN_CHAT_ID = 194614510
 MAX_SLOTS = 15
-DATA_FILE = "registered_users_sunday.json"  # отдельный файл для воскресного бота
+DATA_FILE = "registered_users_sunday.json"
 
 # Данные воскресного забега
 RUN_DATETIME = datetime(2026, 3, 23, 11, 0)
